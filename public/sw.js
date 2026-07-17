@@ -1,15 +1,36 @@
-const CACHE = "machitime-shell-v5";
-const CORE = ["./", "./manifest.webmanifest", "./icon.svg", "./OPERATION_MANUAL.md", "./templates/booths-template.csv", "./templates/timetable-template.csv"];
+const CACHE = "machitime-shell-v6";
+const CORE = [
+  "./",
+  "./manifest.webmanifest",
+  "./icon.svg",
+  "./icons/apple-touch-icon.png",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
+  "./icons/maskable-512.png",
+  "./OPERATION_MANUAL.md",
+  "./templates/booths-template.csv",
+  "./templates/timetable-template.csv",
+];
+
+// addAllは1件でも404があると全体が失敗し、オフライン対応が丸ごと無効になる。
+// 1件ずつ登録して失敗を握りつぶし、残りのキャッシュは必ず作る。
+async function addTolerant(cache, urls) {
+  await Promise.allSettled(urls.map((url) => cache.add(url)));
+}
 
 async function precache() {
   const cache = await caches.open(CACHE);
-  await cache.addAll(CORE);
-  const response = await fetch("./", { cache: "no-cache" });
-  const html = await response.clone().text();
-  await cache.put("./", response);
-  const assets = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))"/g)]
-    .map((match) => new URL(match[1], self.registration.scope).href);
-  if (assets.length > 0) await cache.addAll([...new Set(assets)]);
+  await addTolerant(cache, CORE);
+  try {
+    const response = await fetch("./", { cache: "no-cache" });
+    const html = await response.clone().text();
+    await cache.put("./", response);
+    const assets = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))"/g)]
+      .map((match) => new URL(match[1], self.registration.scope).href);
+    await addTolerant(cache, [...new Set(assets)]);
+  } catch {
+    // オフラインでインストールされた場合はCOREのキャッシュだけで動かす。
+  }
 }
 
 self.addEventListener("install", (event) => {

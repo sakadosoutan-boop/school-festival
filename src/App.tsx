@@ -1,21 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, MouseEvent } from "react";
-import { defaultFestivalData } from "./data/defaults";
 import {
   applyImport,
   backendConfigured,
   cachedData,
   changePin,
+  createSnapshot,
+  DEMO_ADMIN_PIN,
+  DEMO_STAFF_PIN,
   fetchFestivalData,
   flushPending,
+  hasCachedData,
+  listSnapshots,
   pendingMutations,
   queueMutation,
+  restoreSnapshot,
   updateBooth,
   updateFestivalSettings,
   verifyPin,
 } from "./lib/api";
 import { downloadText, parseCsv, toCsv, type CsvRow } from "./lib/csv";
-import { calculateWait, eventPhase, formatRelative, freshness, todayFestivalDay } from "./lib/time";
+import { calculateWait, displayWait, eventPhase, formatRelative, freshness, jstNowMinutes, jstToday, minutesSince, todayFestivalDay, toMinutes } from "./lib/time";
+import { normalizeForSearch } from "./lib/text";
 import {
   BOOTH_HEADERS,
   TIMETABLE_HEADERS,
@@ -30,6 +36,8 @@ import type {
   ImportKind,
   ImportMode,
   ImportPreview,
+  SnapshotMeta,
+  StaffRole,
   TimetableEvent,
 } from "./types";
 
@@ -66,8 +74,17 @@ const STATUS_LABELS: Record<Booth["status"], string> = {
   sold_out: "受付終了・売切",
 };
 
+type SortMode = "recommended" | "wait" | "name";
+
+const SORT_LABELS: Record<SortMode, string> = {
+  recommended: "おすすめ順",
+  wait: "待ち時間が短い順",
+  name: "名前順",
+};
+
 const FAVORITES_KEY = "machitime:v5:favorites";
 const SESSION_PIN_KEY = "machitime:v5:staff-pin";
+const SESSION_ROLE_KEY = "machitime:v5:staff-role";
 
 function loadFavorites(): string[] {
   try {
@@ -120,9 +137,9 @@ function statusMeta(booth: Booth): { label: string; tone: string; waitText: stri
   const state = freshness(booth);
   if (booth.status !== "open") return { label: STATUS_LABELS[booth.status], tone: booth.status, waitText: "—" };
   if (state === "very_stale") return { label: "現地で確認", tone: "stale", waitText: "確認中" };
-  if (booth.waitMinutes <= 10) return { label: "空いています", tone: "calm", waitText: `${booth.waitMinutes}分` };
-  if (booth.waitMinutes <= 25) return { label: "やや混雑", tone: "medium", waitText: `${booth.waitMinutes}分` };
-  return { label: "混雑", tone: "busy", waitText: `${booth.waitMinutes}分` };
+  if (booth.waitMinutes <= 10) return { label: "空いています", tone: "calm", waitText: displayWait(booth.waitMinutes) };
+  if (booth.waitMinutes <= 25) return { label: "やや混雑", tone: "medium", waitText: displayWait(booth.waitMinutes) };
+  return { label: "混雑", tone: "busy", waitText: displayWait(booth.waitMinutes) };
 }
 
 function useClock(): Date {
@@ -134,6 +151,21 @@ function useClock(): Date {
   return now;
 }
 
+// Escで閉じる＋開いた直後にシートへフォーカスを移す。画面回転や誤タップで
+// 背面が操作できなくなる事故と、キーボード利用者が閉じられない問題への対策。
+function useSheetBehavior(onClose: () => void) {
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return ref;
+}
+
 interface ToastState {
   message: string;
   tone: "success" | "error" | "info" | "warning";
@@ -141,25 +173,33 @@ interface ToastState {
 
 function App(): React.JSX.Element {
   const [data, setData] = useState<FestivalData>(() => cachedData());
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !hasCachedData());
   const [offline, setOffline] = useState(!navigator.onLine);
   const [view, setView] = useState<"booths" | "timetable" | "staff">("booths");
   const [day, setDay] = useState<FestivalDay>(() => todayFestivalDay());
   const [category, setCategory] = useState<BoothCategory | "all">("all");
+  const [sortMode, setSortMode] = useState<SortMode>("recommended");
   const [query, setQuery] = useState("");
   const [favorites, setFavorites] = useState<string[]>(loadFavorites);
   const [selectedBooth, setSelectedBooth] = useState<Booth | null>(null);
   const [staffPin, setStaffPin] = useState(() => sessionStorage.getItem(SESSION_PIN_KEY) ?? "");
-  const [staffAuthed, setStaffAuthed] = useState(false);
+  const [staffAuthed, setStaffAuthed] = useState(() => Boolean(sessionStorage.getItem(SESSION_PIN_KEY)));
+  const [staffRole, setStaffRole] = useState<StaffRole | null>(() => {
+    const stored = sessionStorage.getItem(SESSION_ROLE_KEY);
+    return stored === "admin" || stored === "staff" ? stored : null;
+  });
   const [staffBooth, setStaffBooth] = useState<Booth | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview<Booth | TimetableEvent> | null>(null);
   const [importMode, setImportMode] = useState<ImportMode>("merge");
+  const [snapshots, setSnapshots] = useState<SnapshotMeta[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [pendingCount, setPendingCount] = useState(() => pendingMutations().length);
   const toastTimer = useRef<number | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
   const importKindRef = useRef<ImportKind>("booths");
+  const versionRef = useRef<string | undefined>(undefined);
+  const inFlightRef = useRef(false);
   const now = useClock();
 
   const notify = useCallback((message: string, tone: ToastState["tone"] = "success") => {
@@ -171,47 +211,102 @@ function App(): React.JSX.Element {
     }, 3200);
   }, []);
 
-  const refresh = useCallback(async (silent = false) => {
-    const result = await fetchFestivalData();
-    if (result.ok && result.data) {
-      const pending = pendingMutations();
-      const latestPending = new Map<string, (typeof pending)[number]>();
-      pending.forEach((mutation) => latestPending.set(mutation.boothId, mutation));
-      const hydrated: FestivalData = {
-        ...result.data,
-        booths: result.data.booths.map((booth) => {
-          const mutation = latestPending.get(booth.id);
-          return mutation
-            ? { ...booth, ...mutation.patch, revision: mutation.expectedRevision + 1 } as Booth
-            : booth;
-        }),
-      };
-      setData(hydrated);
-      setStaffBooth((current) => current ? hydrated.booths.find((booth) => booth.id === current.id) ?? current : null);
-      setSelectedBooth((current) => current ? hydrated.booths.find((booth) => booth.id === current.id) ?? current : null);
-      setPendingCount(pending.length);
-      setOffline(false);
-      if (!silent) notify("最新情報に更新しました", "info");
-    } else {
+  useEffect(() => {
+    versionRef.current = data.version;
+  }, [data.version]);
+
+  const refresh = useCallback(async (silent = false): Promise<boolean> => {
+    if (inFlightRef.current) return true;
+    inFlightRef.current = true;
+    try {
+      const result = await fetchFestivalData(versionRef.current);
+      if (result.ok && result.notModified) {
+        setData((current) => ({ ...current, fetchedAt: new Date().toISOString() }));
+        setOffline(false);
+        if (!silent) notify("表示は最新の状態です", "info");
+        return true;
+      }
+      if (result.ok && result.data) {
+        const pending = pendingMutations();
+        const latestPending = new Map<string, (typeof pending)[number]>();
+        pending.forEach((mutation) => latestPending.set(mutation.boothId, mutation));
+        const hydrated: FestivalData = {
+          ...result.data,
+          booths: result.data.booths.map((booth) => {
+            const mutation = latestPending.get(booth.id);
+            return mutation
+              ? { ...booth, ...mutation.patch, revision: mutation.expectedRevision + 1 } as Booth
+              : booth;
+          }),
+        };
+        versionRef.current = result.data.version;
+        setData(hydrated);
+        setStaffBooth((current) => current ? hydrated.booths.find((booth) => booth.id === current.id) ?? current : null);
+        setSelectedBooth((current) => current ? hydrated.booths.find((booth) => booth.id === current.id) ?? current : null);
+        setPendingCount(pending.length);
+        setOffline(false);
+        if (!silent) notify("最新情報に更新しました", "info");
+        return true;
+      }
       setOffline(true);
       if (!silent) notify("通信できないため、端末に保存した情報を表示しています", "warning");
+      return false;
+    } finally {
+      inFlightRef.current = false;
+      setLoading(false);
     }
-    setLoading(false);
+  }, [notify]);
+
+  // ポーリング：来場者25秒・スタッフ12秒を基準に±15%のゆらぎを入れ、
+  // 失敗時は間隔を3倍へ延ばす。バックグラウンドのタブは止め、復帰時に即時更新する。
+  // 全端末が同じ10秒で一斉に叩いてバックエンドを飽和させないための設計。
+  useEffect(() => {
+    let cancelled = false;
+    let paused = false;
+    let timer: number | null = null;
+    const schedule = (ok: boolean) => {
+      if (cancelled) return;
+      const base = staffAuthed ? 12_000 : 25_000;
+      const delay = (ok ? base : Math.min(base * 3, 75_000)) * (0.85 + Math.random() * 0.3);
+      timer = window.setTimeout(() => void run(), delay);
+    };
+    const run = async () => {
+      if (cancelled) return;
+      if (document.hidden) {
+        paused = true;
+        return;
+      }
+      const ok = await refresh(true);
+      schedule(ok);
+    };
+    const onVisibility = () => {
+      if (!document.hidden && paused && !cancelled) {
+        paused = false;
+        void run();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    void run();
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refresh, staffAuthed]);
+
+  const flushQueued = useCallback(async (pin: string) => {
+    const result = await flushPending(pin);
+    setPendingCount(pendingMutations().length);
+    if (result.completed > 0) notify(`保留していた${result.completed}件を同期しました`);
+    if (result.conflicts > 0) notify(`${result.conflicts}件は他端末の更新と競合しました`, "warning");
+    if (result.failed > 0) notify(`${result.failed}件は送信できませんでした。通信状態を確認してください`, "warning");
   }, [notify]);
 
   useEffect(() => {
-    void refresh(true);
-    const timer = window.setInterval(() => void refresh(true), 10_000);
     const online = () => {
       void (async () => {
         setOffline(false);
-        if (staffAuthed && staffPin) {
-          const result = await flushPending(staffPin);
-          setPendingCount(pendingMutations().length);
-          if (result.completed > 0) notify(`保留していた${result.completed}件を同期しました`);
-          if (result.conflicts > 0) notify(`${result.conflicts}件は他端末の更新と競合しました`, "warning");
-          if (result.failed > 0) notify(`${result.failed}件は送信できませんでした。通信状態を確認してください`, "warning");
-        }
+        if (staffAuthed && staffPin && pendingMutations().length > 0) await flushQueued(staffPin);
         await refresh(true);
       })();
     };
@@ -219,11 +314,10 @@ function App(): React.JSX.Element {
     window.addEventListener("online", online);
     window.addEventListener("offline", offlineHandler);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("online", online);
       window.removeEventListener("offline", offlineHandler);
     };
-  }, [notify, refresh, staffAuthed, staffPin]);
+  }, [flushQueued, refresh, staffAuthed, staffPin]);
 
   useEffect(() => {
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
@@ -233,26 +327,48 @@ function App(): React.JSX.Element {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
   }, []);
 
+  // 起動時の再認証。オフラインで判定できない間は前回のログインを維持する
+  // （更新は端末に保留され、送信時にサーバーが必ずPINを再検証する）。
+  // 明確に「PINが無効」と返った場合だけログアウトさせる。
   useEffect(() => {
     if (!staffPin) return;
-    void verifyPin(staffPin).then((result) => {
-      if (result.ok && result.data?.valid) setStaffAuthed(true);
-      else sessionStorage.removeItem(SESSION_PIN_KEY);
+    void verifyPin(staffPin).then(async (result) => {
+      if (result.ok && result.data?.valid) {
+        const role = result.data.role ?? "staff";
+        setStaffAuthed(true);
+        setStaffRole(role);
+        sessionStorage.setItem(SESSION_ROLE_KEY, role);
+        if (navigator.onLine && pendingMutations().length > 0) await flushQueued(staffPin);
+      } else if (result.ok) {
+        sessionStorage.removeItem(SESSION_PIN_KEY);
+        sessionStorage.removeItem(SESSION_ROLE_KEY);
+        setStaffAuthed(false);
+        setStaffRole(null);
+        setStaffPin("");
+      }
     });
   }, []); // intentionally check only once on boot
 
   const visibleBooths = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
+    const normalized = normalizeForSearch(query);
     return data.booths
       .filter((booth) => booth.days.includes(day))
       .filter((booth) => category === "all" || booth.category === category)
-      .filter((booth) => !normalized || [booth.name, booth.organizer, booth.location, booth.description].some((value) => value.toLowerCase().includes(normalized)))
+      .filter((booth) => !normalized || [booth.name, booth.organizer, booth.location, booth.description].some((value) => normalizeForSearch(value).includes(normalized)))
       .sort((a, b) => {
+        if (sortMode === "wait") {
+          const rank = (booth: Booth) => booth.status === "open" ? (freshness(booth) === "very_stale" ? 1 : 0) : 2;
+          const rankDiff = rank(a) - rank(b);
+          if (rankDiff !== 0) return rankDiff;
+          if (rank(a) === 0 && a.waitMinutes !== b.waitMinutes) return a.waitMinutes - b.waitMinutes;
+          return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ja");
+        }
+        if (sortMode === "name") return a.name.localeCompare(b.name, "ja");
         const favoriteDiff = Number(favorites.includes(b.id)) - Number(favorites.includes(a.id));
         if (favoriteDiff !== 0) return favoriteDiff;
         return a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ja");
       });
-  }, [category, data.booths, day, favorites, query]);
+  }, [category, data.booths, day, favorites, now, query, sortMode]);
 
   const visibleEvents = useMemo(() => data.timetable
     .filter((event) => event.day === day)
@@ -260,6 +376,8 @@ function App(): React.JSX.Element {
 
   const nextEvent = visibleEvents.find((event) => eventPhase(event, now) !== "ended");
   const liveEvent = visibleEvents.find((event) => eventPhase(event, now) === "live");
+  const fetchedAgeMinutes = minutesSince(data.fetchedAt);
+  const dataStale = !offline && fetchedAgeMinutes >= 2;
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -274,9 +392,13 @@ function App(): React.JSX.Element {
       notify(result.error ?? "PINが違います", "error");
       return;
     }
+    const role = result.data.role ?? "staff";
     sessionStorage.setItem(SESSION_PIN_KEY, staffPin);
+    sessionStorage.setItem(SESSION_ROLE_KEY, role);
     setStaffAuthed(true);
-    notify("スタッフモードに入りました");
+    setStaffRole(role);
+    notify(role === "admin" ? "管理者モードに入りました" : "スタッフモードに入りました");
+    if (navigator.onLine && pendingMutations().length > 0) await flushQueued(staffPin);
   };
 
   const commitBooth = async (next: Booth, expectedRevision: number) => {
@@ -411,6 +533,42 @@ function App(): React.JSX.Element {
     notify("バックアップを書き出しました", "info");
   };
 
+  const saveSnapshot = async () => {
+    setBusy(true);
+    const result = await createSnapshot(staffPin, "手動保存");
+    setBusy(false);
+    if (!result.ok) {
+      notify(result.error ?? "サーバーへの保存に失敗しました", "error");
+      return;
+    }
+    notify("現在のデータをサーバーへ保存しました");
+  };
+
+  const openSnapshots = async () => {
+    setSnapshots([]);
+    const result = await listSnapshots(staffPin);
+    if (!result.ok || !result.data) {
+      setSnapshots(null);
+      notify(result.error ?? "スナップショット一覧を取得できませんでした", "error");
+      return;
+    }
+    setSnapshots(result.data);
+  };
+
+  const executeRestore = async (snapshot: SnapshotMeta) => {
+    const stamp = new Date(snapshot.createdAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    if (!window.confirm(`${stamp} 時点（企画${snapshot.boothCount}件・演目${snapshot.eventCount}件）へ全件置換で復元します。現在のデータは復元前に自動保存されます。よろしいですか？`)) return;
+    setBusy(true);
+    const result = await restoreSnapshot(staffPin, snapshot.id);
+    setBusy(false);
+    if (!result.ok || !result.data) {
+      notify(result.error ?? "復元に失敗しました", "error");
+      return;
+    }
+    setData(result.data);
+    setSnapshots(null);
+    notify("スナップショットから復元しました");
+  };
 
   const saveEmergencyNotice = async (notice: string) => {
     if (notice.length > 180) {
@@ -431,22 +589,36 @@ function App(): React.JSX.Element {
   const handlePinChange = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const target: StaffRole = form.get("target") === "admin" ? "admin" : "staff";
     const nextPin = String(form.get("nextPin") ?? "");
     if (!/^\d{6,8}$/.test(nextPin)) {
       notify("新しいPINは6〜8桁の数字にしてください", "error");
       return;
     }
     setBusy(true);
-    const result = await changePin(staffPin, nextPin);
+    const result = await changePin(staffPin, target, nextPin);
     setBusy(false);
     if (!result.ok) {
       notify(result.error ?? "PIN変更に失敗しました", "error");
       return;
     }
-    setStaffPin(nextPin);
-    sessionStorage.setItem(SESSION_PIN_KEY, nextPin);
+    if (target === "admin") {
+      // 管理者は自分のPINでログインしているため、セッションも新PINへ切り替える。
+      setStaffPin(nextPin);
+      sessionStorage.setItem(SESSION_PIN_KEY, nextPin);
+    }
     event.currentTarget.reset();
-    notify("スタッフPINを変更しました");
+    notify(target === "admin" ? "管理者PINを変更しました" : "更新用PIN（スタッフ）を変更しました");
+  };
+
+  const handleLogout = () => {
+    if (pendingCount > 0 && !window.confirm(`未送信の更新が${pendingCount}件この端末に残っています。ログアウトしますか？（次回ログイン時に再送を試みます）`)) return;
+    sessionStorage.removeItem(SESSION_PIN_KEY);
+    sessionStorage.removeItem(SESSION_ROLE_KEY);
+    setStaffAuthed(false);
+    setStaffRole(null);
+    setStaffPin("");
+    setView("booths");
   };
 
   return (
@@ -463,11 +635,22 @@ function App(): React.JSX.Element {
           <button className="icon-button" onClick={() => void refresh()} aria-label="最新情報に更新">↻</button>
         </div>
         <div className="status-strip">
-          <span className={offline ? "status-dot status-dot--warn" : "status-dot"} />
-          {offline ? "オフライン：最後に取得した情報を表示中" : backendConfigured ? "共有データに接続中" : "デモモード：この端末内だけで動作"}
+          <span className={offline || dataStale ? "status-dot status-dot--warn" : "status-dot"} />
+          {offline
+            ? "オフライン：最後に取得した情報を表示中"
+            : dataStale
+              ? `接続が不安定：最終取得は${formatRelative(data.fetchedAt)}`
+              : backendConfigured ? "共有データに接続中" : "デモモード：この端末内だけで動作"}
           <span className="status-strip__right">更新 {new Date(data.fetchedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}</span>
         </div>
       </header>
+
+      {import.meta.env.PROD && !backendConfigured && (
+        <div className="demo-banner" role="alert">
+          <strong>デモ表示中：データは他の端末と共有されていません</strong>
+          <span>本番運用には共有APIの設定（VITE_FESTIVAL_API_URL / VITE_FESTIVAL_PUBLIC_KEY）が必要です。運営本部はREADMEの手順を確認してください。</span>
+        </div>
+      )}
 
       {data.settings.emergencyNotice && (
         <div className="emergency" role="alert"><strong>重要なお知らせ</strong><span>{data.settings.emergencyNotice}</span></div>
@@ -498,6 +681,12 @@ function App(): React.JSX.Element {
                 ))}
               </div>
             </section>
+
+            <div className="sort-row" role="group" aria-label="並び替え">
+              {(Object.keys(SORT_LABELS) as SortMode[]).map((item) => (
+                <button key={item} className={sortMode === item ? "chip chip--sort is-active" : "chip chip--sort"} onClick={() => setSortMode(item)}>{SORT_LABELS[item]}</button>
+              ))}
+            </div>
 
             <section className="card-list" aria-live="polite">
               {visibleBooths.map((booth) => {
@@ -564,10 +753,10 @@ function App(): React.JSX.Element {
             <h2>スタッフモード</h2>
             <p>待ち時間の更新とデータ取込は、文化祭実行委員・各団体の担当者のみ利用してください。</p>
             <form onSubmit={handleLogin}>
-              <label>スタッフPIN<input type="password" inputMode="numeric" autoComplete="current-password" value={staffPin} onChange={(event: ChangeEvent<HTMLInputElement>) => setStaffPin(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="6〜8桁" /></label>
+              <label>スタッフPIN<input type="password" inputMode="numeric" autoComplete="off" value={staffPin} onChange={(event: ChangeEvent<HTMLInputElement>) => setStaffPin(event.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="6〜8桁" /></label>
               <button className="primary-button" disabled={busy}>{busy ? "確認中…" : "ログイン"}</button>
             </form>
-            {!backendConfigured && <div className="demo-note">デモモードの初期PINは <strong>202608</strong> です。本番では共有APIを設定してください。</div>}
+            {!backendConfigured && <div className="demo-note">デモモードの初期PINは 更新用 <strong>{DEMO_STAFF_PIN}</strong> / 管理用 <strong>{DEMO_ADMIN_PIN}</strong> です。本番では共有APIを設定してください。</div>}
           </section>
         )}
 
@@ -576,20 +765,19 @@ function App(): React.JSX.Element {
             data={data}
             day={day}
             setDay={setDay}
+            now={now}
+            role={staffRole ?? "staff"}
             pendingCount={pendingCount}
             busy={busy}
             onOpenBooth={(booth) => setStaffBooth(booth)}
             onRefresh={() => void refresh()}
             onOpenImport={openImport}
             onExportBackup={exportBackup}
+            onSaveSnapshot={() => void saveSnapshot()}
+            onOpenSnapshots={() => void openSnapshots()}
             onSaveEmergencyNotice={(notice) => void saveEmergencyNotice(notice)}
             onChangePin={handlePinChange}
-            onLogout={() => {
-              sessionStorage.removeItem(SESSION_PIN_KEY);
-              setStaffAuthed(false);
-              setStaffPin("");
-              setView("booths");
-            }}
+            onLogout={handleLogout}
           />
         )}
       </main>
@@ -615,6 +803,7 @@ function App(): React.JSX.Element {
       {selectedBooth && <BoothDetail booth={selectedBooth} favorite={favorites.includes(selectedBooth.id)} onFavorite={() => setFavorites((current) => current.includes(selectedBooth.id) ? current.filter((id) => id !== selectedBooth.id) : [...current, selectedBooth.id])} onClose={() => setSelectedBooth(null)} />}
       {staffBooth && <StaffBoothModal booth={staffBooth} busy={busy} onPatch={patchStaffBooth} onServed={markServed} onClose={() => setStaffBooth(null)} />}
       {importPreview && <ImportModal preview={importPreview} mode={importMode} setMode={setImportMode} busy={busy} onApply={() => void executeImport()} onClose={() => setImportPreview(null)} />}
+      {snapshots !== null && <SnapshotModal snapshots={snapshots} busy={busy} onRestore={(snapshot) => void executeRestore(snapshot)} onClose={() => setSnapshots(null)} />}
       {loading && <div className="loading-overlay"><div className="spinner" /><span>読み込み中</span></div>}
     </div>
   );
@@ -624,17 +813,40 @@ function EmptyState({ title, body }: { title: string; body: string }): React.JSX
   return <div className="empty-state"><span>🎪</span><strong>{title}</strong><p>{body}</p></div>;
 }
 
+function WaitSparkline({ history }: { history: Booth["history"] }): React.JSX.Element | null {
+  const points = history.filter((point) => Number.isFinite(Date.parse(point.at))).slice(-24);
+  if (points.length < 3) return null;
+  const max = Math.max(10, ...points.map((point) => point.waitMinutes));
+  const coords = points
+    .map((point, index) => `${((index / (points.length - 1)) * 100).toFixed(1)},${(40 - (point.waitMinutes / max) * 34).toFixed(1)}`)
+    .join(" ");
+  const timeLabel = (iso: string) => new Date(iso).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  const first = points[0];
+  const last = points[points.length - 1];
+  return (
+    <div className="sparkline">
+      <div className="sparkline__head"><span>待ち時間の推移</span><small>最大 {max}分</small></div>
+      <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points={coords} />
+      </svg>
+      {first && last && <div className="sparkline__axis"><small>{timeLabel(first.at)}</small><small>{timeLabel(last.at)}</small></div>}
+    </div>
+  );
+}
+
 function BoothDetail({ booth, favorite, onFavorite, onClose }: { booth: Booth; favorite: boolean; onFavorite: () => void; onClose: () => void }): React.JSX.Element {
   const meta = statusMeta(booth);
   const state = freshness(booth);
+  const sheetRef = useSheetBehavior(onClose);
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="sheet" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${booth.name}の詳細`}>
+      <section ref={sheetRef} tabIndex={-1} className="sheet" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${booth.name}の詳細`}>
         <div className="sheet__handle" />
         <div className="sheet__header"><button onClick={onFavorite}>{favorite ? "♥" : "♡"}</button><button onClick={onClose}>閉じる</button></div>
         <div className="detail-hero"><div>{booth.emoji}</div><span>{CATEGORY_LABELS[booth.category]}</span><h2>{booth.name}</h2><p>{booth.organizer}</p></div>
         {state !== "fresh" && booth.status === "open" && <div className="warning-box"><strong>待ち時間情報が古くなっています</strong><span>表示は{formatRelative(booth.lastUpdated)}のものです。現地の案内を優先してください。</span></div>}
         <div className={`detail-wait detail-wait--${meta.tone}`}><span>{meta.label}</span><strong>{meta.waitText}</strong>{booth.status === "open" && state !== "very_stale" && <small>現在 約{booth.queueLength}人待ち</small>}</div>
+        <WaitSparkline history={booth.history} />
         <dl className="detail-list"><div><dt>場所</dt><dd>{booth.location}</dd></div><div><dt>開催時間</dt><dd>{booth.openTime}–{booth.closeTime}</dd></div><div><dt>紹介</dt><dd>{booth.description || "紹介文はありません。"}</dd></div>{booth.notice && <div><dt>お知らせ</dt><dd>{booth.notice}</dd></div>}</dl>
       </section>
     </div>
@@ -642,17 +854,21 @@ function BoothDetail({ booth, favorite, onFavorite, onClose }: { booth: Booth; f
 }
 
 function StaffDashboard({
-  data, day, setDay, pendingCount, busy, onOpenBooth, onRefresh, onOpenImport, onExportBackup, onSaveEmergencyNotice, onChangePin, onLogout,
+  data, day, setDay, now, role, pendingCount, busy, onOpenBooth, onRefresh, onOpenImport, onExportBackup, onSaveSnapshot, onOpenSnapshots, onSaveEmergencyNotice, onChangePin, onLogout,
 }: {
   data: FestivalData;
   day: FestivalDay;
   setDay: (day: FestivalDay) => void;
+  now: Date;
+  role: StaffRole;
   pendingCount: number;
   busy: boolean;
   onOpenBooth: (booth: Booth) => void;
   onRefresh: () => void;
   onOpenImport: (kind: ImportKind) => void;
   onExportBackup: () => void;
+  onSaveSnapshot: () => void;
+  onOpenSnapshots: () => void;
   onSaveEmergencyNotice: (notice: string) => void;
   onChangePin: (event: React.FormEvent<HTMLFormElement>) => void;
   onLogout: () => void;
@@ -660,42 +876,63 @@ function StaffDashboard({
   const booths = data.booths.filter((booth) => booth.days.includes(day)).sort((a, b) => a.sortOrder - b.sortOrder);
   const [emergencyNotice, setEmergencyNotice] = useState(data.settings.emergencyNotice);
   useEffect(() => setEmergencyNotice(data.settings.emergencyNotice), [data.settings.emergencyNotice]);
+  // 開催日当日だけ警告する。todayFestivalDayは祭日以外を8/29へ丸めるため使わない。
+  const isToday = day === jstToday(now);
+  const nowMinutes = jstNowMinutes(now);
+  const isAdmin = role === "admin";
   return (
     <section className="staff-dashboard">
-      <div className="staff-heading"><div><p className="eyebrow eyebrow--dark">OPERATION</p><h2>運営ダッシュボード</h2></div><button className="text-button" onClick={onLogout}>ログアウト</button></div>
+      <div className="staff-heading"><div><p className="eyebrow eyebrow--dark">OPERATION</p><h2>運営ダッシュボード</h2><small className="role-tag">{isAdmin ? "管理者PINでログイン中" : "更新用PINでログイン中"}</small></div><button className="text-button" onClick={onLogout}>ログアウト</button></div>
       {pendingCount > 0 && <div className="warning-box"><strong>未送信の更新が{pendingCount}件あります</strong><span>通信が戻ると自動送信します。競合した場合は最新値を確認してください。</span></div>}
       <div className="day-switch">{data.settings.dates.map((date) => <button key={date} className={day === date ? "is-active" : ""} onClick={() => setDay(date)}>{DAY_LABELS[date]}</button>)}</div>
 
-      <form className="emergency-form" onSubmit={(event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); onSaveEmergencyNotice(emergencyNotice); }}>
-        <div><h3>全来場者への重要なお知らせ</h3><p>中止、会場変更、入場制限など、全画面上部へ直ちに表示する内容だけを入力してください。</p></div>
-        <textarea value={emergencyNotice} maxLength={180} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setEmergencyNotice(event.target.value)} placeholder="例：雷雨のため、中庭企画を一時中止しています。" />
-        <small>{emergencyNotice.length}/180文字</small>
-        <div className="emergency-form__actions"><button type="button" className="secondary-button" disabled={busy || !data.settings.emergencyNotice} onClick={() => { setEmergencyNotice(""); onSaveEmergencyNotice(""); }}>表示を解除</button><button className="primary-button" disabled={busy || emergencyNotice.trim() === data.settings.emergencyNotice}>{busy ? "送信中…" : "お知らせを公開"}</button></div>
-      </form>
+      {isAdmin && (
+        <form className="emergency-form" onSubmit={(event: React.FormEvent<HTMLFormElement>) => { event.preventDefault(); onSaveEmergencyNotice(emergencyNotice); }}>
+          <div><h3>全来場者への重要なお知らせ</h3><p>中止、会場変更、入場制限など、全画面上部へ直ちに表示する内容だけを入力してください。</p></div>
+          <textarea value={emergencyNotice} maxLength={180} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setEmergencyNotice(event.target.value)} placeholder="例：雷雨のため、中庭企画を一時中止しています。" />
+          <small>{emergencyNotice.length}/180文字</small>
+          <div className="emergency-form__actions"><button type="button" className="secondary-button" disabled={busy || !data.settings.emergencyNotice} onClick={() => { setEmergencyNotice(""); onSaveEmergencyNotice(""); }}>表示を解除</button><button className="primary-button" disabled={busy || emergencyNotice.trim() === data.settings.emergencyNotice}>{busy ? "送信中…" : "お知らせを公開"}</button></div>
+        </form>
+      )}
 
       <div className="staff-section-heading"><div><h3>待ち時間を更新</h3><p>担当企画を選び、列の人数と営業状況を更新します。</p></div><button className="small-button" onClick={onRefresh}>再読込</button></div>
       <div className="staff-booth-list">
         {booths.map((booth) => {
           const meta = statusMeta(booth);
-          return <button key={booth.id} onClick={() => onOpenBooth(booth)}><span className="staff-booth-list__emoji">{booth.emoji}</span><span><strong>{booth.name}</strong><small>{booth.location} · 更新 {formatRelative(booth.lastUpdated)}</small></span><b>{meta.waitText}</b><i>›</i></button>;
+          const overdue = isToday && booth.status === "open" && Number.isFinite(toMinutes(booth.closeTime)) && nowMinutes > toMinutes(booth.closeTime);
+          return <button key={booth.id} onClick={() => onOpenBooth(booth)}><span className="staff-booth-list__emoji">{booth.emoji}</span><span><strong>{booth.name}</strong><small>{booth.location} · 更新 {formatRelative(booth.lastUpdated)}{overdue && <em className="overdue-flag"> · ⚠ 終了時刻を過ぎています</em>}</small></span><b>{meta.waitText}</b><i>›</i></button>;
         })}
       </div>
 
-      <div className="staff-section-heading"><div><h3>データ管理</h3><p>取り込む前に自動検証し、エラーがあるファイルは反映しません。</p></div></div>
+      <div className="staff-section-heading"><div><h3>データ管理</h3><p>{isAdmin ? "取り込む前に自動検証し、エラーがあるファイルは反映しません。" : "この端末からはバックアップの書き出しのみできます。"}</p></div></div>
       <div className="action-grid">
-        <button onClick={() => onOpenImport("booths")}><span>🏫</span><strong>企画・団体一覧を取込</strong><small>CSV / JSON</small></button>
-        <button onClick={() => onOpenImport("timetable")}><span>🗓️</span><strong>時間割を取込</strong><small>CSV / JSON</small></button>
-        <button onClick={downloadBoothTemplate}><span>⬇️</span><strong>企画テンプレート</strong><small>CSVを出力</small></button>
-        <button onClick={downloadTimetableTemplate}><span>⬇️</span><strong>時間割テンプレート</strong><small>CSVを出力</small></button>
+        {isAdmin && <button onClick={() => onOpenImport("booths")}><span>🏫</span><strong>企画・団体一覧を取込</strong><small>CSV / JSON</small></button>}
+        {isAdmin && <button onClick={() => onOpenImport("timetable")}><span>🗓️</span><strong>時間割を取込</strong><small>CSV / JSON</small></button>}
+        {isAdmin && <button onClick={downloadBoothTemplate}><span>⬇️</span><strong>企画テンプレート</strong><small>CSVを出力</small></button>}
+        {isAdmin && <button onClick={downloadTimetableTemplate}><span>⬇️</span><strong>時間割テンプレート</strong><small>CSVを出力</small></button>}
         <button onClick={onExportBackup}><span>💾</span><strong>全体バックアップ</strong><small>JSONを出力</small></button>
+        {isAdmin && <button onClick={onSaveSnapshot} disabled={busy}><span>🗄️</span><strong>サーバーへ保存</strong><small>スナップショット</small></button>}
+        {isAdmin && <button onClick={onOpenSnapshots}><span>⏪</span><strong>保存履歴・復元</strong><small>スナップショット</small></button>}
         <a href="./OPERATION_MANUAL.md" target="_blank" rel="noreferrer"><span>📘</span><strong>運用マニュアル</strong><small>別ファイルで開く</small></a>
       </div>
+      {!isAdmin && <div className="operation-note">データ取込・全件置換・重要なお知らせ・PIN変更・スナップショット復元は、管理者PINでログインした端末だけが操作できます。必要な場合は運営本部へ連絡してください。</div>}
 
-      <form className="pin-form" onSubmit={onChangePin}>
-        <div><h3>スタッフPINを変更</h3><p>本番前に必ず初期値から変更し、口頭または紙で必要な担当者だけに共有してください。</p></div>
-        <input name="nextPin" type="password" inputMode="numeric" placeholder="新しい6〜8桁PIN" required minLength={6} maxLength={8} />
-        <button className="secondary-button" disabled={busy}>PINを変更</button>
-      </form>
+      {isAdmin && (
+        <>
+          <form className="pin-form" onSubmit={onChangePin}>
+            <input type="hidden" name="target" value="staff" />
+            <div><h3>更新用PIN（スタッフ）を変更</h3><p>各企画の担当者が使うPINです。本番前に必ず初期値から変更し、口頭または紙で共有してください。</p></div>
+            <input name="nextPin" type="password" inputMode="numeric" autoComplete="off" placeholder="新しい6〜8桁PIN" required minLength={6} maxLength={8} />
+            <button className="secondary-button" disabled={busy}>PINを変更</button>
+          </form>
+          <form className="pin-form" onSubmit={onChangePin}>
+            <input type="hidden" name="target" value="admin" />
+            <div><h3>管理者PINを変更</h3><p>取込・置換・お知らせ・PIN変更ができる強い権限です。システム責任者と運営本部の数名だけに共有してください。</p></div>
+            <input name="nextPin" type="password" inputMode="numeric" autoComplete="off" placeholder="新しい6〜8桁PIN" required minLength={6} maxLength={8} />
+            <button className="secondary-button" disabled={busy}>PINを変更</button>
+          </form>
+        </>
+      )}
     </section>
   );
 }
@@ -703,14 +940,21 @@ function StaffDashboard({
 function StaffBoothModal({ booth, busy, onPatch, onServed, onClose }: { booth: Booth; busy: boolean; onPatch: (patch: Partial<Booth>) => void; onServed: () => void; onClose: () => void }): React.JSX.Element {
   const [queue, setQueue] = useState(booth.queueLength);
   const [notice, setNotice] = useState(booth.notice);
-  useEffect(() => { setQueue(booth.queueLength); setNotice(booth.notice); }, [booth]);
+  const sheetRef = useSheetBehavior(onClose);
+  // ポーリングで booth オブジェクトは10秒ごとに新しくなる。毎回リセットすると
+  // 入力途中の人数やお知らせが消えるため、サーバー側で実際に書き込みがあった
+  // （= revision が変わった）ときだけ入力値を同期する。
+  useEffect(() => {
+    setQueue(booth.queueLength);
+    setNotice(booth.notice);
+  }, [booth.id, booth.revision]);
   const preview = calculateWait(queue, booth.capacity, booth.cycleMinutes);
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="sheet sheet--staff" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${booth.name}の運営`}>
+      <section ref={sheetRef} tabIndex={-1} className="sheet sheet--staff" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={`${booth.name}の運営`}>
         <div className="sheet__handle" />
         <div className="sheet__header"><div><small>運用中</small><strong>{booth.name}</strong></div><button onClick={onClose}>閉じる</button></div>
-        <div className="operation-status"><span>来場者への表示</span><strong>{booth.status === "open" ? `${preview}分待ち` : STATUS_LABELS[booth.status]}</strong><small>{queue}人 ÷ {booth.capacity}人/回 × {booth.cycleMinutes}分</small></div>
+        <div className="operation-status"><span>来場者への表示</span><strong>{booth.status === "open" ? `${displayWait(preview)}待ち` : STATUS_LABELS[booth.status]}</strong><small>{queue}人 ÷ {booth.capacity}人/回 × {booth.cycleMinutes}分</small></div>
         <div className="operation-block"><label>営業状況</label><div className="segmented">{(["open", "paused", "closed", "sold_out"] as Booth["status"][]).map((status) => <button key={status} className={booth.status === status ? "is-active" : ""} onClick={() => onPatch({ status })} disabled={busy}>{STATUS_LABELS[status]}</button>)}</div></div>
         <div className="operation-block"><label>列に並んでいる人数</label><div className="counter"><button onClick={() => setQueue(Math.max(0, queue - 1))}>−</button><input type="number" inputMode="numeric" min="0" max="5000" value={queue} onChange={(event: ChangeEvent<HTMLInputElement>) => setQueue(Math.max(0, Math.min(5000, Number(event.target.value) || 0)))} /><button onClick={() => setQueue(Math.min(5000, queue + 1))}>＋</button></div><div className="quick-count">{[0, 5, 10, 20, 50].map((value) => <button key={value} onClick={() => setQueue(value)}>{value}人</button>)}</div><button className="primary-button" onClick={() => onPatch({ queueLength: queue })} disabled={busy || queue === booth.queueLength}>{busy ? "送信中…" : `約${preview}分待ちとして更新`}</button></div>
         <button className="served-button" onClick={onServed} disabled={busy || booth.status !== "open" || booth.queueLength === 0}>✓ {booth.capacity}人をご案内しました</button>
@@ -721,20 +965,45 @@ function StaffBoothModal({ booth, busy, onPatch, onServed, onClose }: { booth: B
   );
 }
 
+function SnapshotModal({ snapshots, busy, onRestore, onClose }: { snapshots: SnapshotMeta[]; busy: boolean; onRestore: (snapshot: SnapshotMeta) => void; onClose: () => void }): React.JSX.Element {
+  const sheetRef = useSheetBehavior(onClose);
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section ref={sheetRef} tabIndex={-1} className="dialog" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="サーバーに保存したスナップショット">
+        <div className="dialog__header"><div><small>SNAPSHOT</small><h2>サーバー保存の履歴</h2></div><button onClick={onClose} aria-label="閉じる">×</button></div>
+        <div className="snapshot-list">
+          {snapshots.map((snapshot) => (
+            <div key={snapshot.id} className="snapshot-row">
+              <div>
+                <strong>{new Date(snapshot.createdAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</strong>
+                <small>{snapshot.label || "自動保存"} · 企画{snapshot.boothCount}件 / 演目{snapshot.eventCount}件</small>
+              </div>
+              <button className="secondary-button" disabled={busy} onClick={() => onRestore(snapshot)}>この時点へ復元</button>
+            </div>
+          ))}
+          {snapshots.length === 0 && <p className="snapshot-empty">保存されたスナップショットはまだありません。「サーバーへ保存」や全件置換時の自動保存で作成されます。</p>}
+        </div>
+        <div className="operation-note" style={{ margin: "0 18px 16px" }}>復元は「全件置換」で行われ、実行直前の状態も自動でサーバーに保存されます。</div>
+      </section>
+    </div>
+  );
+}
+
 function ImportModal({ preview, mode, setMode, busy, onApply, onClose }: { preview: ImportPreview<Booth | TimetableEvent>; mode: ImportMode; setMode: (mode: ImportMode) => void; busy: boolean; onApply: () => void; onClose: () => void }): React.JSX.Element {
   const errors = preview.issues.filter((item) => item.level === "error");
   const warnings = preview.issues.filter((item) => item.level === "warning");
   const [replaceConfirmed, setReplaceConfirmed] = useState(false);
+  const sheetRef = useSheetBehavior(onClose);
   const selectMode = (nextMode: ImportMode) => {
     setMode(nextMode);
     if (nextMode !== "replace") setReplaceConfirmed(false);
   };
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <section className="dialog" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="取込内容の確認">
+      <section ref={sheetRef} tabIndex={-1} className="dialog" onMouseDown={(event: MouseEvent<HTMLElement>) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="取込内容の確認">
         <div className="dialog__header"><div><small>{preview.sourceName}</small><h2>{preview.kind === "booths" ? "企画一覧" : "タイムテーブル"}の取込確認</h2></div><button onClick={onClose}>×</button></div>
         <div className="import-summary"><div><strong>{preview.rows.length}</strong><span>データ件数</span></div><div className={errors.length ? "has-error" : ""}><strong>{errors.length}</strong><span>エラー</span></div><div className={warnings.length ? "has-warning" : ""}><strong>{warnings.length}</strong><span>警告</span></div></div>
-        <div className="operation-block"><label>反映方法</label><div className="segmented segmented--two"><button className={mode === "merge" ? "is-active" : ""} onClick={() => selectMode("merge")}><strong>追加・更新</strong><small>同じidだけ上書き</small></button><button className={mode === "replace" ? "is-active" : ""} onClick={() => selectMode("replace")}><strong>全件置換</strong><small>未記載データは削除</small></button></div>{mode === "replace" && <div className="warning-box"><strong>全件置換を選択しています</strong><span>現在登録中の同種データはファイル内容へ置き換わります。反映直前に全体バックアップを自動保存します。</span><label className="confirm-check"><input type="checkbox" checked={replaceConfirmed} onChange={(event: ChangeEvent<HTMLInputElement>) => setReplaceConfirmed(event.target.checked)} /> 未記載データが削除されることを確認しました</label></div>}</div>
+        <div className="operation-block"><label>反映方法</label><div className="segmented segmented--two"><button className={mode === "merge" ? "is-active" : ""} onClick={() => selectMode("merge")}><strong>追加・更新</strong><small>同じidだけ上書き</small></button><button className={mode === "replace" ? "is-active" : ""} onClick={() => selectMode("replace")}><strong>全件置換</strong><small>未記載データは削除</small></button></div>{mode === "replace" && <div className="warning-box"><strong>全件置換を選択しています</strong><span>現在登録中の同種データはファイル内容へ置き換わります。反映直前に、この端末とサーバーの両方へ自動バックアップを保存します。</span><label className="confirm-check"><input type="checkbox" checked={replaceConfirmed} onChange={(event: ChangeEvent<HTMLInputElement>) => setReplaceConfirmed(event.target.checked)} /> 未記載データが削除されることを確認しました</label></div>}</div>
         <div className="issue-list">
           {preview.issues.slice(0, 100).map((item, index) => <div key={`${item.row}-${index}`} className={`issue issue--${item.level}`}><strong>{item.level === "error" ? "エラー" : "警告"} · {item.row}行目{item.field ? ` · ${item.field}` : ""}</strong><span>{item.message}</span></div>)}
           {preview.issues.length === 0 && <div className="success-box">✓ 自動検証を通過しました。内容を確認して反映してください。</div>}

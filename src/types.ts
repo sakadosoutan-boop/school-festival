@@ -64,6 +64,18 @@ export interface FestivalData {
 export type ImportKind = "booths" | "timetable";
 export type ImportMode = "merge" | "replace";
 
+// staff: 担当企画の待ち時間・状態・お知らせのみ更新できる。
+// admin: 上記に加え、取込・全件置換・重要なお知らせ・PIN変更・スナップショット復元ができる。
+export type StaffRole = "staff" | "admin";
+
+export interface SnapshotMeta {
+  id: number;
+  createdAt: string;
+  label: string;
+  boothCount: number;
+  eventCount: number;
+}
+
 export interface ValidationIssue {
   level: "error" | "warning";
   row: number;
@@ -93,4 +105,5 @@ export interface ApiResult<T> {
   error?: string;
   code?: string;
   current?: Booth;
+  notModified?: boolean;
 }

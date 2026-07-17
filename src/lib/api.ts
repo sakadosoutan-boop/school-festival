@@ -1,5 +1,15 @@
 import { defaultFestivalData } from "../data/defaults";
-import type { ApiResult, Booth, FestivalData, FestivalSettings, ImportMode, PendingMutation, TimetableEvent } from "../types";
+import type {
+  ApiResult,
+  Booth,
+  FestivalData,
+  FestivalSettings,
+  ImportMode,
+  PendingMutation,
+  SnapshotMeta,
+  StaffRole,
+  TimetableEvent,
+} from "../types";
 
 const API_URL = (import.meta.env.VITE_FESTIVAL_API_URL as string | undefined)?.trim();
 const PUBLIC_KEY = ((import.meta.env.VITE_FESTIVAL_PUBLIC_KEY as string | undefined) ?? (import.meta.env.VITE_FESTIVAL_ANON_KEY as string | undefined))?.trim();
@@ -7,8 +17,17 @@ const CACHE_KEY = "machitime:v5:cache";
 const DEMO_KEY = "machitime:v5:demo";
 const PENDING_KEY = "machitime:v5:pending";
 const DEMO_PIN_KEY = "machitime:v5:demo-pin";
+const DEMO_ADMIN_PIN_KEY = "machitime:v5:demo-admin-pin";
+const DEMO_SNAPSHOTS_KEY = "machitime:v5:demo-snapshots";
+
+// 校内Wi-Fiでは応答が返らないままハングする接続が珍しくない。
+// タイムアウトを切らないと「読み込み中」のまま画面が固まり続ける。
+const REQUEST_TIMEOUT_MS = 12_000;
 
 export const backendConfigured = Boolean(API_URL && PUBLIC_KEY);
+
+export const DEMO_STAFF_PIN = "202608";
+export const DEMO_ADMIN_PIN = "202609";
 
 function cloneDefault(): FestivalData {
   return structuredClone(defaultFestivalData);
@@ -33,6 +52,8 @@ function writeJson(key: string, value: unknown): void {
 
 async function remote<T>(action: string, payload: Record<string, unknown> = {}): Promise<ApiResult<T>> {
   if (!API_URL || !PUBLIC_KEY) return { ok: false, error: "共有APIが設定されていません。", code: "NOT_CONFIGURED" };
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const response = await fetch(API_URL, {
       method: "POST",
@@ -41,6 +62,7 @@ async function remote<T>(action: string, payload: Record<string, unknown> = {}):
         apikey: PUBLIC_KEY,
       },
       body: JSON.stringify({ action, ...payload }),
+      signal: controller.signal,
     });
     const body = await response.json().catch(() => ({})) as Record<string, unknown>;
     if (!response.ok || body.ok === false) {
@@ -53,7 +75,12 @@ async function remote<T>(action: string, payload: Record<string, unknown> = {}):
     }
     return { ok: true, data: (body.data ?? body) as T };
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { ok: false, error: "通信がタイムアウトしました。", code: "NETWORK" };
+    }
     return { ok: false, error: error instanceof Error ? error.message : "ネットワークエラー", code: "NETWORK" };
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -61,24 +88,45 @@ export function cachedData(): FestivalData {
   return readJson<FestivalData>(CACHE_KEY, readJson<FestivalData>(DEMO_KEY, cloneDefault()));
 }
 
-export async function fetchFestivalData(): Promise<ApiResult<FestivalData>> {
+export function hasCachedData(): boolean {
+  try {
+    return localStorage.getItem(backendConfigured ? CACHE_KEY : DEMO_KEY) !== null;
+  } catch {
+    return false;
+  }
+}
+
+// knownVersionが最新と一致する間はサーバーが notModified を返し、
+// 大きなペイロードの転送とDB読取をスキップできる(全端末ポーリングの負荷対策)。
+export async function fetchFestivalData(knownVersion?: string): Promise<ApiResult<FestivalData>> {
   if (!backendConfigured) {
     const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
     writeJson(DEMO_KEY, data);
     return { ok: true, data };
   }
-  const result = await remote<FestivalData>("get_public");
+  const result = await remote<FestivalData & { notModified?: boolean }>("get_public", knownVersion ? { knownVersion } : {});
+  if (result.ok && result.data?.notModified) return { ok: true, notModified: true };
   if (result.ok && result.data) writeJson(CACHE_KEY, result.data);
   return result;
 }
 
-export async function verifyPin(pin: string): Promise<ApiResult<{ valid: boolean }>> {
-  if (!backendConfigured) return { ok: true, data: { valid: pin === (localStorage.getItem(DEMO_PIN_KEY) ?? "202608") } };
+function demoRole(pin: string): StaffRole | null {
+  if (pin === (localStorage.getItem(DEMO_ADMIN_PIN_KEY) ?? DEMO_ADMIN_PIN)) return "admin";
+  if (pin === (localStorage.getItem(DEMO_PIN_KEY) ?? DEMO_STAFF_PIN)) return "staff";
+  return null;
+}
+
+export async function verifyPin(pin: string): Promise<ApiResult<{ valid: boolean; role?: StaffRole }>> {
+  if (!backendConfigured) {
+    const role = demoRole(pin);
+    return { ok: true, data: role ? { valid: true, role } : { valid: false } };
+  }
   return remote("verify_pin", { pin });
 }
 
 export async function updateBooth(pin: string, booth: Booth, expectedRevision: number): Promise<ApiResult<Booth>> {
   if (!backendConfigured) {
+    if (!demoRole(pin)) return { ok: false, error: "スタッフPINが違います。", code: "INVALID_PIN" };
     const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
     const index = data.booths.findIndex((item) => item.id === booth.id);
     if (index < 0) return { ok: false, error: "対象の企画が見つかりません。", code: "NOT_FOUND" };
@@ -100,6 +148,8 @@ export async function applyImport(
   timetable?: TimetableEvent[],
 ): Promise<ApiResult<FestivalData>> {
   if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "データ取込は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    if (mode === "replace") await createSnapshot(pin, "全件置換前の自動保存");
     const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
     if (booths) {
       if (mode === "replace") data.booths = booths;
@@ -129,6 +179,7 @@ export async function applyImport(
 
 export async function updateFestivalSettings(pin: string, patch: Partial<FestivalSettings>): Promise<ApiResult<FestivalData>> {
   if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "重要なお知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" };
     const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
     data.settings = { ...data.settings, ...patch, lastPublishedAt: new Date().toISOString() };
     data.version = `demo-${Date.now()}`;
@@ -140,13 +191,54 @@ export async function updateFestivalSettings(pin: string, patch: Partial<Festiva
   return remote("update_settings", { pin, patch });
 }
 
-export async function changePin(currentPin: string, nextPin: string): Promise<ApiResult<{ changed: boolean }>> {
+export async function changePin(currentPin: string, target: StaffRole, nextPin: string): Promise<ApiResult<{ changed: boolean }>> {
   if (!backendConfigured) {
-    const valid = currentPin === (localStorage.getItem(DEMO_PIN_KEY) ?? "202608");
-    if (valid) localStorage.setItem(DEMO_PIN_KEY, nextPin);
-    return { ok: valid, data: { changed: valid }, error: valid ? undefined : "現在のPINが違います。" };
+    if (demoRole(currentPin) !== "admin") return { ok: false, error: "PIN変更は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    localStorage.setItem(target === "admin" ? DEMO_ADMIN_PIN_KEY : DEMO_PIN_KEY, nextPin);
+    return { ok: true, data: { changed: true } };
   }
-  return remote("change_pin", { pin: currentPin, nextPin });
+  return remote("change_pin", { pin: currentPin, target, nextPin });
+}
+
+interface DemoSnapshot extends SnapshotMeta {
+  payload: { booths: Booth[]; timetable: TimetableEvent[] };
+}
+
+export async function createSnapshot(pin: string, label: string): Promise<ApiResult<SnapshotMeta>> {
+  if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "スナップショットは管理者PINが必要です。", code: "ADMIN_ONLY" };
+    const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
+    const snapshots = readJson<DemoSnapshot[]>(DEMO_SNAPSHOTS_KEY, []);
+    const snapshot: DemoSnapshot = {
+      id: Date.now(),
+      createdAt: new Date().toISOString(),
+      label,
+      boothCount: data.booths.length,
+      eventCount: data.timetable.length,
+      payload: { booths: data.booths, timetable: data.timetable },
+    };
+    writeJson(DEMO_SNAPSHOTS_KEY, [snapshot, ...snapshots].slice(0, 5));
+    return { ok: true, data: snapshot };
+  }
+  return remote("create_snapshot", { pin, label });
+}
+
+export async function listSnapshots(pin: string): Promise<ApiResult<SnapshotMeta[]>> {
+  if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "スナップショットは管理者PINが必要です。", code: "ADMIN_ONLY" };
+    return { ok: true, data: readJson<DemoSnapshot[]>(DEMO_SNAPSHOTS_KEY, []).map(({ payload: _payload, ...meta }) => meta) };
+  }
+  return remote("list_snapshots", { pin });
+}
+
+export async function restoreSnapshot(pin: string, snapshotId: number): Promise<ApiResult<FestivalData>> {
+  if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "復元は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    const snapshot = readJson<DemoSnapshot[]>(DEMO_SNAPSHOTS_KEY, []).find((item) => item.id === snapshotId);
+    if (!snapshot) return { ok: false, error: "対象のスナップショットが見つかりません。", code: "NOT_FOUND" };
+    return applyImport(pin, "replace", snapshot.payload.booths, snapshot.payload.timetable);
+  }
+  return remote("restore_snapshot", { pin, snapshotId });
 }
 
 export function pendingMutations(): PendingMutation[] {

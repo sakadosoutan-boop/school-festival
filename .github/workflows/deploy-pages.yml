@@ -24,6 +24,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
+      # Secrets未設定のまま公開すると、端末間でデータが共有されない「デモモード」が
+      # 本番URLに乗ってしまう。意図的なデモ公開はリポジトリ変数 ALLOW_DEMO_DEPLOY=true で許可する。
+      - name: Ensure shared API secrets exist
+        env:
+          VITE_FESTIVAL_API_URL: ${{ secrets.VITE_FESTIVAL_API_URL }}
+          VITE_FESTIVAL_PUBLIC_KEY: ${{ secrets.VITE_FESTIVAL_PUBLIC_KEY }}
+          VITE_FESTIVAL_ANON_KEY: ${{ secrets.VITE_FESTIVAL_ANON_KEY }}
+          ALLOW_DEMO_DEPLOY: ${{ vars.ALLOW_DEMO_DEPLOY }}
+        run: |
+          if [ -z "$VITE_FESTIVAL_API_URL" ] || { [ -z "$VITE_FESTIVAL_PUBLIC_KEY" ] && [ -z "$VITE_FESTIVAL_ANON_KEY" ]; }; then
+            if [ "$ALLOW_DEMO_DEPLOY" = "true" ]; then
+              echo "::warning::共有APIのSecretsが未設定です。デモモード（端末間でデータ共有なし）で公開します。"
+            else
+              echo "::error::VITE_FESTIVAL_API_URL / VITE_FESTIVAL_PUBLIC_KEY が未設定のため中止しました。本番用Secretsを設定するか、デモ公開を許可する場合はリポジトリ変数 ALLOW_DEMO_DEPLOY=true を設定してください。"
+              exit 1
+            fi
+          fi
       - run: npm run build
         env:
           VITE_FESTIVAL_API_URL: ${{ secrets.VITE_FESTIVAL_API_URL }}
