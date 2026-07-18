@@ -41,6 +41,18 @@ jobs:
               exit 1
             fi
           fi
+          # URLの貼り付け事故(引用符・空白・https以外)をデプロイ前に検出する
+          if [ -n "$VITE_FESTIVAL_API_URL" ]; then
+            case "$VITE_FESTIVAL_API_URL" in
+              *'"'*|*"'"*|*' '*)
+                echo "::error::VITE_FESTIVAL_API_URL に引用符または空白が含まれています。URLだけを貼り直してください（例: https://xxxx.supabase.co/functions/v1/festival-admin）。"
+                exit 1;;
+              https://*) ;;
+              *)
+                echo "::error::VITE_FESTIVAL_API_URL は https:// で始まるURLにしてください。現在の値は形式が不正です。"
+                exit 1;;
+            esac
+          fi
       - run: npm run build
         env:
           VITE_FESTIVAL_API_URL: ${{ secrets.VITE_FESTIVAL_API_URL }}

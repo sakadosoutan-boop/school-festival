@@ -5,7 +5,7 @@ import {
   STALE_MINUTES, THEME, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
-  backendConfigured, cachedData, changePin, createSnapshot, deleteBooth as apiDeleteBooth, fetchAll,
+  apiConfigError, backendConfigured, cachedData, changePin, createSnapshot, deleteBooth as apiDeleteBooth, fetchAll,
   flushPending, hasCachedData, listSnapshots, pendingWrites, replaceAll, restoreSnapshot, saveBooth,
   saveStage as apiSaveStage, updateSettings, verifyPin,
 } from "./lib/api";
@@ -515,6 +515,9 @@ function AppInner(): React.JSX.Element {
               </div>
               {offline && (
                 <div className="mb-3 p-2.5 rounded-xl bg-white/25 backdrop-blur flex items-center gap-2 text-xs font-bold text-white"><WifiOff size={14} /> オフライン表示中（最後に取得した情報を表示しています）</div>
+              )}
+              {apiConfigError && (
+                <div className="mb-3 p-2.5 rounded-xl bg-red-600/95 flex items-center gap-2 text-xs font-black text-white">⚠ 設定エラー：{apiConfigError}</div>
               )}
               {import.meta.env.PROD && !backendConfigured && (
                 <div className="mb-3 p-2.5 rounded-xl bg-amber-500/90 flex items-center gap-2 text-xs font-black text-white">⚠ デモ表示中：端末間でデータは共有されません(共有APIが未設定です)</div>
