@@ -9,8 +9,30 @@ import type { ApiResult, Booth, FestivalData, FestivalSettings, SnapshotMeta, St
  * 通信断のときは端末に保留して復帰時に再送する。
  */
 
-const API_URL = (import.meta.env.VITE_FESTIVAL_API_URL as string | undefined)?.trim();
-const PUBLIC_KEY = ((import.meta.env.VITE_FESTIVAL_PUBLIC_KEY as string | undefined) ?? (import.meta.env.VITE_FESTIVAL_ANON_KEY as string | undefined))?.trim();
+// Secretsに紛れ込みがちな前後の引用符・空白を除去する(貼り付け事故対策)。
+function cleanConfig(value: string | undefined): string | undefined {
+  const cleaned = value?.trim().replace(/^["']+|["']+$/g, "").trim();
+  return cleaned || undefined;
+}
+
+const RAW_API_URL = cleanConfig(import.meta.env.VITE_FESTIVAL_API_URL as string | undefined);
+const PUBLIC_KEY = cleanConfig((import.meta.env.VITE_FESTIVAL_PUBLIC_KEY as string | undefined) ?? (import.meta.env.VITE_FESTIVAL_ANON_KEY as string | undefined));
+
+// URLとして不正な設定は、Safariの分かりにくい英語エラー(URL is not valid...)に
+// なる前にここで検出し、画面に日本語で理由を出す。デモモードへ黙って落とさない。
+export const apiConfigError: string | null = (() => {
+  if (!RAW_API_URL) return null;
+  try {
+    const url = new URL(RAW_API_URL);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "共有APIのURLは https:// で始めてください。";
+    if (url.username || url.password) return "共有APIのURLに認証情報(@)が含まれています。URLだけを設定してください。";
+    return null;
+  } catch {
+    return "共有APIのURL(VITE_FESTIVAL_API_URL)が正しい形式ではありません。GitHubのSecretsを確認して再デプロイしてください。";
+  }
+})();
+
+const API_URL = apiConfigError ? undefined : RAW_API_URL;
 
 const CACHE_KEY = "machitime:v6:cache";
 const DEMO_KEY = "machitime:v6:demo";
@@ -21,7 +43,9 @@ const DEMO_SNAPSHOTS_KEY = "machitime:v6:demo-snapshots";
 
 const REQUEST_TIMEOUT_MS = 12_000;
 
-export const backendConfigured = Boolean(API_URL && PUBLIC_KEY);
+// URLが不正でも「設定しようとしている」ことに変わりはないので、デモモードには落とさず
+// すべての通信を設定エラーとして返す(黙ってデータ非共有になる事故を防ぐ)。
+export const backendConfigured = Boolean(RAW_API_URL && PUBLIC_KEY);
 export const DEMO_STAFF_PIN = "2025";
 export const DEMO_ADMIN_PIN = "202609";
 
@@ -84,6 +108,7 @@ function writeDemo(data: FestivalData): FestivalData {
 }
 
 async function remote<T>(action: string, payload: Record<string, unknown> = {}): Promise<ApiResult<T>> {
+  if (apiConfigError) return { ok: false, error: apiConfigError, code: "MISCONFIGURED" };
   if (!API_URL || !PUBLIC_KEY) return { ok: false, error: "共有APIが設定されていません。", code: "NOT_CONFIGURED" };
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
