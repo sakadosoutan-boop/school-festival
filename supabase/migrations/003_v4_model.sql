@@ -28,7 +28,7 @@ create or replace function public.set_staff_pin(p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_pin !~ '^[0-9]{4,8}$' then
@@ -44,7 +44,7 @@ create or replace function public.set_admin_pin(p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_pin !~ '^[0-9]{4,8}$' then
@@ -62,7 +62,7 @@ create or replace function public.get_data_etag()
 returns text
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select (select version::text from public.festival_settings where id = true)
     || ':' || (select count(*)::text from public.booth_docs)
@@ -88,7 +88,7 @@ begin
       b.id,
       jsonb_build_object(
         'id', b.id,
-        'name', left(b.name, 20),
+        'name', left(b.name, 30),
         'emoji', b.emoji,
         'iconImage', '',
         'category', case when b.category in ('attraction','food','game','experience','stage','exhibition','other') then b.category else 'other' end,

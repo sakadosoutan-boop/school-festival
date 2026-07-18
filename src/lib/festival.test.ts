@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   avgCycle, allSoldOut, boothsForRoom, calcWait, formatLocation, isSoldOut, itemStatus, makeBooth,
-  makeStageItem, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage, sortItems, toMin,
+  makeStageItem, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage, seedBooths, seedStage, sortItems, toMin,
 } from "./festival";
 import type { Booth } from "../types";
 
@@ -111,5 +111,33 @@ describe("map room matching", () => {
   it("does not light up the homeroom cell for outdoor class booths", () => {
     const outdoor = [makeBooth({ orgType: "class", grade: 1, classNum: 3, building: "outdoor", room: "屋台エリア" }, "stall")];
     expect(boothsForRoom(outdoor, "1-3")).toEqual([]);
+  });
+});
+
+describe("やなぎ祭2026 初期データ", () => {
+  it("seeds all 43 groups closed, with unique ids and map-matching rooms", () => {
+    const seeds = seedBooths();
+    expect(seeds).toHaveLength(43);
+    expect(new Set(seeds.map((b) => b.id)).size).toBe(43);
+    expect(seeds.every((b) => !b.isOpen)).toBe(true);
+
+    const haunted = seeds.find((b) => b.id === "c1-3")!;
+    expect(haunted.building).toBe("hr");
+    expect(haunted.floor).toBe(3); // 1年はHR棟3F
+    expect(boothsForRoom(seeds, "1-3").map((b) => b.id)).toEqual(["c1-3"]);
+
+    const annex = seeds.find((b) => b.id === "c3-9")!;
+    expect(annex.building).toBe("extra");
+    expect(annex.floor).toBe(1);
+
+    expect(boothsForRoom(seeds, "視聴覚室").map((b) => b.id)).toEqual(["club-engeki"]);
+  });
+
+  it("seeds the real two-day stage program (5 + 7 performances)", () => {
+    const stage = seedStage();
+    expect(stage.items).toHaveLength(12);
+    expect(stage.items.filter((i) => i.day === 1)).toHaveLength(5);
+    expect(stage.items.filter((i) => i.day === 2)).toHaveLength(7);
+    expect(stage.stageName).toBe("体育館ステージ");
   });
 });

@@ -268,7 +268,7 @@ export const EditBoothSheet = ({ booth, onClose, onSave, onDelete, isNew }: { bo
         </Field>
 
         <Field label="ブース名" required>
-          <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={20}
+          <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={30}
             className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base font-bold bg-white outline-none focus:border-stone-900" placeholder="例: お化け屋敷" />
         </Field>
 
@@ -745,12 +745,12 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
           <div className="text-[11px] text-stone-400 mt-2">現在 {booths.length} ブースを登録中</div>
         </div>
 
-        {/* Reset to sample */}
+        {/* Reset to initial data */}
         {isAdmin && (
           <div className="bg-white rounded-2xl p-5 border border-stone-200">
-            <div className="flex items-center gap-2 mb-3"><RefreshCw size={16} className="text-stone-700" strokeWidth={2.2} /><div className="font-bold text-stone-900">サンプルに戻す</div></div>
-            <p className="text-xs text-stone-500 mb-3 leading-relaxed">全ブースを削除し、サンプル6件で作り直します。練習用です。実行前にサーバーへ自動保存されます。</p>
-            <button onClick={onResetSeed} className="w-full py-3 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95">サンプルデータにリセット</button>
+            <div className="flex items-center gap-2 mb-3"><RefreshCw size={16} className="text-stone-700" strokeWidth={2.2} /><div className="font-bold text-stone-900">初期データに戻す</div></div>
+            <p className="text-xs text-stone-500 mb-3 leading-relaxed">全ブースとステージを削除し、やなぎ祭の初期データ(参加43団体・ステージ12公演)で作り直します。実行前にサーバーへ自動保存されます。</p>
+            <button onClick={onResetSeed} className="w-full py-3 rounded-xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95">初期データにリセット</button>
           </div>
         )}
 

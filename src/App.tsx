@@ -407,7 +407,7 @@ function AppInner(): React.JSX.Element {
     versionRef.current = result.data.version;
     setSettingsOpen(false);
     setStaffBoothId(null);
-    showToast("サンプルデータにリセットしました", "info");
+    showToast("初期データにリセットしました", "info");
   }, [showToast, staffPin]);
 
   /* ── スナップショット ── */
@@ -495,7 +495,7 @@ function AppInner(): React.JSX.Element {
         />
       )}
       {snapshots !== null && <SnapshotSheet snapshots={snapshots} busy={busy} onRestore={(s) => void handleRestore(s)} onClose={() => setSnapshots(null)} />}
-      {confirmReset && <Confirm title="サンプルに戻しますか?" message="現在の全ブースを削除し、サンプル6件で作り直します。実行前の状態は自動保存されます。" confirmLabel="リセット" danger onConfirm={() => void resetSeed()} onCancel={() => setConfirmReset(false)} />}
+      {confirmReset && <Confirm title="初期データに戻しますか?" message="現在の全ブース・ステージを削除し、やなぎ祭の初期データ(43団体)で作り直します。実行前の状態は自動保存されます。" confirmLabel="リセット" danger onConfirm={() => void resetSeed()} onCancel={() => setConfirmReset(false)} />}
 
       {/* HOME (guest) */}
       {view === "home" && (

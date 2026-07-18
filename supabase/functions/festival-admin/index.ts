@@ -41,7 +41,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
 });
 
 const CATEGORY_SET = new Set(["attraction", "food", "game", "experience", "stage", "exhibition", "other"]);
-const BUILDING_SET = new Set(["hr", "special", "admin", "extra", "outdoor", "legacy"]);
+const BUILDING_SET = new Set(["hr", "special", "admin", "extra", "gaikoku", "outdoor", "legacy"]);
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 const ID_RE = /^[A-Za-z0-9:_-]{1,64}$/;
 const ICON_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
@@ -176,7 +176,7 @@ type Sanitized = { ok: true; value: Record<string, unknown> } | { ok: false; rea
 function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
   const id = str(raw.id, 64).trim();
   if (!ID_RE.test(id)) return { ok: false, reason: `id「${id || "(空)"}」が不正です` };
-  const name = str(raw.name, 20).trim();
+  const name = str(raw.name, 30).trim();
   if (!name) return { ok: false, reason: `id「${id}」のブース名が空です` };
 
   const iconImage = str(raw.iconImage, 120_000);

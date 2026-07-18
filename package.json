@@ -9,7 +9,8 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "preview": "vite preview",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "data:json": "node --experimental-strip-types scripts/make-import-json.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.25.0",

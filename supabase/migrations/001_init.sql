@@ -97,7 +97,7 @@ create or replace function public.verify_staff_pin(p_pin text)
 returns boolean
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select exists (
     select 1 from public.festival_settings
@@ -109,7 +109,7 @@ create or replace function public.set_staff_pin(p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_pin !~ '^[0-9]{6,8}$' then
@@ -130,7 +130,7 @@ create or replace function public.set_emergency_notice(p_notice text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if char_length(coalesce(p_notice, '')) > 180 then
@@ -155,7 +155,7 @@ create or replace function public.apply_festival_import(
 ) returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   item jsonb;

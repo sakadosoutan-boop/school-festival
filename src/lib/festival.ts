@@ -1,4 +1,5 @@
 import type { Booth, Product, StageItem, StageProgram } from "../types";
+import { YANAGI_BOOTHS, YANAGI_STAGE_ITEMS, YANAGI_STAGE_LABEL, YANAGI_STAGE_NAME } from "./yanagi2026";
 
 /* ═══════════ CONFIG(v4プロトタイプ準拠) ═══════════ */
 
@@ -64,11 +65,13 @@ export const EMOJI_PALETTE = [
   "❤️","💛","💚","💙","💜","🩷","🌸","🌺","🌻","🍀","👑","🏆",
 ];
 
-// 場所: 棟 × 階の選択式
+// 場所: 棟 × 階の選択式(やなぎ祭の校内マップ準拠)
 export const BUILDINGS = [
   { id: "hr", label: "HR棟" },
-  { id: "special", label: "特別教室棟" },
+  { id: "special", label: "特別棟" },
+  { id: "extra", label: "増設棟" },
   { id: "admin", label: "管理棟" },
+  { id: "gaikoku", label: "外国語科棟" },
   { id: "outdoor", label: "野外" },
 ] as const;
 export const FLOORS = [1, 2, 3, 4];
@@ -233,14 +236,10 @@ export function makeBooth(partial: unknown, id?: string): Booth {
   return merged as Booth;
 }
 
-export const seedBooths = (): Booth[] => ([
-  { name: "お化け屋敷", emoji: "👻", category: "attraction", orgType: "class", grade: 3, classNum: 1, building: "hr", floor: 3, room: "301", description: "本格ホラー体験。心臓の弱い方はご遠慮ください。", capacity: 2, cycleSeconds: 180, peopleInLine: 30 },
-  { name: "メイド喫茶", emoji: "🎀", category: "food", orgType: "class", grade: 2, classNum: 2, building: "hr", floor: 2, room: "203", description: "ドリンク・スイーツあり。", capacity: 4, cycleSeconds: 600, peopleInLine: 12 },
-  { name: "たこ焼き屋台", emoji: "🐙", category: "food", orgType: "class", grade: 1, classNum: 3, building: "outdoor", floor: 1, room: "屋台エリア", description: "秘伝のソースで焼きたて8個入り。", capacity: 5, cycleSeconds: 180, peopleInLine: 18 },
-  { name: "射的・縁日", emoji: "🎯", category: "game", orgType: "club", orgName: "生徒会", building: "outdoor", floor: 1, room: "縁日広場", description: "射的・ヨーヨー釣り。景品豪華。", capacity: 3, cycleSeconds: 120, peopleInLine: 5 },
-  { name: "脱出ゲーム", emoji: "🔐", category: "attraction", orgType: "class", grade: 3, classNum: 4, building: "special", floor: 2, room: "視聴覚室", description: "30分以内に謎を解け！4人1組。", capacity: 4, cycleSeconds: 1800, peopleInLine: 24 },
-  { name: "クレープ", emoji: "🥞", category: "food", orgType: "class", grade: 1, classNum: 1, building: "hr", floor: 1, room: "カフェテリア", description: "手作りクレープ12種類。", capacity: 3, cycleSeconds: 240, peopleInLine: 22 },
-] as Array<Partial<Booth>>).map((b, i) => makeBooth(b, `seed${i + 1}`));
+// 初期データ = やなぎ祭2026の実データ(参加団体一覧より43団体)。
+// 開場までは全ブース「準備中」で始め、当日各担当が営業中へ切り替える。
+export const seedBooths = (): Booth[] =>
+  YANAGI_BOOTHS.map((b) => makeBooth({ ...b, isOpen: false }, b.id));
 
 /* ═══════════ STAGE TIMETABLE MODEL ═══════════ */
 
@@ -263,26 +262,14 @@ export const makeStageItem = (partial: Partial<StageItem> = {}): StageItem => ({
   ...partial,
 });
 
+// 初期プログラム = 体育館当日スケジュール(8/29・8/30)の実データ。
 export const seedStage = (): StageProgram => ({
-  stageName: "体育館ステージ",
-  dayLabel: "文化祭ステージ",
+  stageName: YANAGI_STAGE_NAME,
+  dayLabel: YANAGI_STAGE_LABEL,
   days: 2,
   rev: 0,
   lastUpdated: Date.now(),
-  items: [
-    makeStageItem({ id: "st1", day: 1, title: "オープニング", performer: "実行委員会", start: "10:00", end: "10:15" }),
-    makeStageItem({ id: "st2", day: 1, title: "吹奏楽部 演奏", performer: "吹奏楽部", start: "10:20", end: "11:00" }),
-    makeStageItem({ id: "st3", day: 1, title: "ダンス部 ステージ", performer: "ダンス部", start: "11:10", end: "11:50" }),
-    makeStageItem({ id: "st4", day: 1, title: "お笑いライブ", performer: "有志", start: "12:30", end: "13:10" }),
-    makeStageItem({ id: "st5", day: 1, title: "有志バンド", performer: "軽音部 有志", start: "13:20", end: "14:10" }),
-    makeStageItem({ id: "st6", day: 1, title: "クイズ大会", performer: "生徒会", start: "14:20", end: "15:00" }),
-    makeStageItem({ id: "st7", day: 2, title: "2日目オープニング", performer: "実行委員会", start: "10:00", end: "10:15" }),
-    makeStageItem({ id: "st8", day: 2, title: "合唱部 発表", performer: "合唱部", start: "10:30", end: "11:10" }),
-    makeStageItem({ id: "st9", day: 2, title: "ダンスバトル", performer: "ダンス部", start: "11:20", end: "12:00" }),
-    makeStageItem({ id: "st10", day: 2, title: "ミスコン・ミスターコン", performer: "実行委員会", start: "13:00", end: "13:50" }),
-    makeStageItem({ id: "st11", day: 2, title: "軽音 ライブ", performer: "軽音部", start: "14:00", end: "14:50" }),
-    makeStageItem({ id: "st12", day: 2, title: "フィナーレ・表彰", performer: "全体", start: "15:15", end: "15:45" }),
-  ],
+  items: YANAGI_STAGE_ITEMS.map((item) => makeStageItem(item)),
 });
 
 // 旧バージョン(複数ステージ)のデータを単一ステージ形式に正規化

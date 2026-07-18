@@ -43,7 +43,7 @@ create or replace function public.get_data_etag()
 returns text
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select (select version::text from public.festival_settings where id = true)
     || ':' || (select count(*)::text from public.booths)
@@ -55,7 +55,7 @@ create or replace function public.resolve_pin_role(p_pin text)
 returns text
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select case
     when exists (
@@ -74,7 +74,7 @@ create or replace function public.set_admin_pin(p_pin text)
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_pin !~ '^[0-9]{6,8}$' then

@@ -11,27 +11,24 @@ import { BoothIcon } from "./ui";
 
 const MAP_W = 240, MAP_H = 166;
 
-interface MapMisc { id: string; label: string; x: number; y: number; w: number; h: number; kind: string; vertical?: boolean }
+interface MapMisc { id: string; label: string; x: number; y: number; w: number; h: number; kind: string; vertical?: boolean; bId?: string }
 
+// 校内マップPDF(やなぎ祭)に合わせた配置。bIdを持つ施設は、その棟の企画があると点灯し、タップで一覧へ移動する。
 const MAP_MISC: MapMisc[] = [
   { id: "note", label: "※空白は立入禁止", x: 6, y: 2, w: 44, h: 7, kind: "note" },
   { id: "bike_top", label: "自転車置き場", x: 54, y: 2, w: 70, h: 7, kind: "misc" },
   { id: "trash_area", label: "ゴミ捨て場", x: 130, y: 2, w: 28, h: 7, kind: "misc" },
   { id: "bike_left", label: "自転車置き場", x: 4, y: 12, w: 8, h: 80, kind: "misc", vertical: true },
   { id: "gate", label: "正門", x: 4, y: 112, w: 8, h: 16, kind: "gate" },
-  { id: "stamp", label: "スタンプ\nラリー", x: 16, y: 16, w: 22, h: 11, kind: "misc" },
+  { id: "photo", label: "フォト\nスポット", x: 16, y: 16, w: 22, h: 11, kind: "misc" },
   { id: "panel", label: "顔出し\nパネル", x: 16, y: 92, w: 14, h: 11, kind: "misc" },
   { id: "fountain", label: "噴水", x: 18, y: 120, w: 12, h: 11, kind: "misc" },
-  { id: "gaikoku", label: "外国語科棟", x: 40, y: 126, w: 24, h: 12, kind: "facility" },
+  { id: "gaikoku", label: "外国語科棟", x: 40, y: 126, w: 24, h: 12, kind: "facility", bId: "gaikoku" },
   { id: "piloti", label: "ピロティー", x: 66, y: 126, w: 20, h: 12, kind: "facility" },
   { id: "shokudo", label: "1F食堂 🍴\n2F合宿棟", x: 96, y: 124, w: 30, h: 14, kind: "facility" },
-  { id: "kendo", label: "剣道場", x: 144, y: 118, w: 34, h: 7, kind: "facility" },
-  { id: "judo", label: "柔道場", x: 144, y: 126, w: 34, h: 7, kind: "facility" },
   { id: "gym", label: "体育館", x: 40, y: 146, w: 34, h: 14, kind: "gym" },
   { id: "bushitsu", label: "部室棟/卓球場", x: 80, y: 146, w: 34, h: 14, kind: "facility" },
-  { id: "tennis", label: "テニスコート", x: 118, y: 146, w: 34, h: 14, kind: "court" },
-  { id: "ground_bb", label: "野球\nグラウンド", x: 178, y: 46, w: 58, h: 26, kind: "ground" },
-  { id: "ground_hb", label: "ハンドボール\nグラウンド", x: 178, y: 96, w: 58, h: 26, kind: "ground" },
+  { id: "ground", label: "グラウンド", x: 178, y: 46, w: 58, h: 76, kind: "ground", bId: "outdoor" },
 ];
 
 // かえる広場(野外企画エリア・ゴミ箱あり)
@@ -43,10 +40,10 @@ interface MapBlock { id: string; label: string; lx: number; ly: number; x: numbe
 const MAP_BLOCKS: MapBlock[] = [
   { id: "special", label: "特別棟", lx: 42, ly: 11, x: 42, y: 13, w: 100, floorH: 7,
     floors: [
-      { f: "4F", rooms: [{ n: "視聴覚室", w: 18 }, { n: "", w: 62 }, { n: "音楽室", w: 20 }] },
-      { f: "3F", rooms: [{ n: "地学室", w: 18 }, { n: "社会科室", w: 30 }, { n: "書道室", w: 30 }, { n: "美術室", w: 22 }] },
-      { f: "2F", rooms: [{ n: "", w: 100 }] },
-      { f: "1F", rooms: [{ n: "化学室", w: 18 }, { n: "被服室", w: 30 }, { n: "家庭科室", w: 26 }, { n: "礼法室", w: 26 }] },
+      { f: "4F", rooms: [{ n: "視聴覚室", w: 18 }, { n: "図書室", w: 62 }, { n: "音楽室", w: 20 }] },
+      { f: "3F", rooms: [{ n: "地学室", w: 18 }, { n: "社会科室", w: 24 }, { n: "書道室", w: 20 }, { n: "書道準備室", w: 14 }, { n: "美術室", w: 24 }] },
+      { f: "2F", rooms: [{ n: "生物室", w: 18 }, { n: "理科第1講義室", w: 26 }, { n: "理科第2講義室", w: 26 }, { n: "数学準備室", w: 14 }, { n: "物理室", w: 16 }] },
+      { f: "1F", rooms: [{ n: "化学室", w: 18 }, { n: "被服室", w: 20 }, { n: "家庭科室", w: 22 }, { n: "礼法室", w: 16 }, { n: "調理室", w: 24 }] },
     ] },
   { id: "hr", label: "HR棟", lx: 22, ly: 56, x: 30, y: 58, w: 124, floorH: 9,
     entrance: { x: 22, y: 58, w: 8, h: 27, label: "昇降口" },
@@ -57,14 +54,14 @@ const MAP_BLOCKS: MapBlock[] = [
     ] },
   { id: "admin", label: "管理棟", lx: 40, ly: 90, x: 40, y: 92, w: 100, floorH: 8,
     floors: [
-      { f: "2F", rooms: [{ n: "", w: 20 }, { n: "立入禁止", w: 60, off: true }, { n: "", w: 20 }] },
-      { f: "1F", rooms: [{ n: "", w: 100 }] },
+      { f: "2F", rooms: [{ n: "会議室", w: 20 }, { n: "放送室", w: 20 }, { n: "職員室", w: 60 }] },
+      { f: "1F", rooms: [{ n: "事務室", w: 20 }, { n: "校長室", w: 20 }, { n: "応接室", w: 20 }, { n: "保健室", w: 20 }, { n: "進路資料室", w: 20 }] },
     ] },
   { id: "extra", label: "増設棟", lx: 146, ly: 82, x: 146, y: 84, w: 30, floorH: 8,
     floors: [
       { f: "3F", rooms: [{ n: "1-8", w: 15 }, { n: "1-9", w: 15 }] },
       { f: "2F", rooms: [{ n: "2-8", w: 15 }, { n: "2-9", w: 15 }] },
-      { f: "1F", rooms: [{ n: "", w: 15 }, { n: "3-9", w: 15 }] },
+      { f: "1F", rooms: [{ n: "自習室", w: 15 }, { n: "3-9", w: 15 }] },
     ] },
 ];
 
@@ -133,13 +130,15 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                   : m.kind === "facility" ? "#7a756c"
                   : "#9b968e";
                 const mcx = m.x + m.w / 2, mcy = m.y + m.h / 2;
-                const clickable = m.kind === "gym";
+                const linked = m.bId ? (grouped[m.bId] || []) : [];
+                const clickable = m.kind === "gym" || linked.length > 0;
                 return (
                   <g key={m.id} style={{ cursor: clickable ? "pointer" : "default" }}
-                    onClick={() => { if (m.kind === "gym") onOpenStage(); }}>
+                    onClick={() => { if (m.kind === "gym") onOpenStage(); else if (m.bId && linked.length > 0) scrollTo(m.bId); }}>
                     <title>{m.label.replace("\n", "")}</title>
+                    {linked.length > 0 && <rect x={m.x - 1} y={m.y - 1} width={m.w + 2} height={m.h + 2} rx="2.2" fill="#ffb157" opacity="0.22" />}
                     <rect x={m.x} y={m.y} width={m.w} height={m.h} rx="1.4"
-                      fill={fill} stroke={stroke} strokeWidth="0.5"
+                      fill={linked.length > 0 ? "#fff3e0" : fill} stroke={linked.length > 0 ? "#ff9e3d" : stroke} strokeWidth={linked.length > 0 ? 0.9 : 0.5}
                       strokeDasharray={m.kind === "court" ? "1.6 1.2" : "none"} />
                     {m.vertical ? (
                       m.label.split("").map((ch, i) => (
@@ -178,6 +177,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                     <text x={fcx - 4} y={fcy + 1.1} textAnchor="middle" fontSize="3.1" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
                     {has && wait != null && <text x={fcx + 12} y={fcy + 1.1} textAnchor="middle" fontSize="2.7" fontWeight="900" fill="#e6206b">{wait}分</text>}
                     {hasFood && <text x={FROG_PLAZA.x + 3} y={fcy + 1.3} textAnchor="middle" fontSize="3">🍴</text>}
+                    <text x={FROG_PLAZA.x + 8} y={fcy + 1.3} textAnchor="middle" fontSize="3">☂️</text>
                     <text x={FROG_PLAZA.x + FROG_PLAZA.w - 3} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">🗑️</text>
                   </g>
                 );
@@ -256,6 +256,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
           </button>
           <div className="flex items-center justify-center gap-3 mt-2 text-[10px] text-stone-500 font-bold flex-wrap">
             <span className="flex items-center gap-1">🍴 食品販売</span>
+            <span className="flex items-center gap-1">☂️ アンブレラスカイ</span>
             <span className="flex items-center gap-1">🥤 自販機</span>
             <span className="flex items-center gap-1">🗑️ ゴミ箱</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border" style={{ borderColor: "#ff9e3d", background: "#fff3e0" }} /> 企画あり(タップで詳細)</span>
