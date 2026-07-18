@@ -1,90 +1,95 @@
-export const FESTIVAL_DAYS = ["2026-08-29", "2026-08-30"] as const;
-export type FestivalDay = (typeof FESTIVAL_DAYS)[number];
-
 export const BOOTH_CATEGORIES = ["attraction", "food", "game", "experience", "stage", "exhibition", "other"] as const;
 export type BoothCategory = (typeof BOOTH_CATEGORIES)[number];
 
-export const BOOTH_STATUSES = ["open", "paused", "closed", "sold_out"] as const;
-export type BoothStatus = (typeof BOOTH_STATUSES)[number];
+export type BuildingId = "hr" | "special" | "admin" | "extra" | "outdoor";
+export type OrgType = "class" | "club" | "other";
+
+export interface Product {
+  id: string;
+  name: string;
+  stock: number;
+  soldOut: boolean;
+}
 
 export interface Booth {
   id: string;
   name: string;
-  organizer: string;
-  category: BoothCategory;
-  location: string;
-  description: string;
   emoji: string;
-  days: FestivalDay[];
-  openTime: string;
-  closeTime: string;
+  iconImage: string;
+  category: string;
+  products: Product[];
+  organizer: string; // 旧データ互換(自由入力)
+  orgType: OrgType;
+  grade: number;
+  classNum: number;
+  orgName: string;
+  building: string;
+  floor: number;
+  room: string;
+  location: string; // 旧データ互換(自由入力)
+  description: string;
+  isOpen: boolean;
+  peopleInLine: number;
   capacity: number;
-  cycleMinutes: number;
-  queueLength: number;
+  cycleSeconds: number;
   waitMinutes: number;
-  status: BoothStatus;
-  notice: string;
-  sortOrder: number;
-  revision: number;
-  lastUpdated: string;
-  history: Array<{ at: string; waitMinutes: number }>;
+  history: Array<{ ts: number; wait: number }>;
+  cycleHistory: number[];
+  lastUpdated: number;
+  lastServedAt: number | null;
+  undoSnapshot: {
+    peopleInLine: number;
+    cycleHistory: number[];
+    lastServedAt: number | null;
+    waitMinutes: number;
+    ts: number;
+  } | null;
+  rev: number;
 }
 
-export interface TimetableEvent {
+export interface StageItem {
   id: string;
-  day: FestivalDay;
-  startTime: string;
-  endTime: string;
   title: string;
-  organizer: string;
-  venue: string;
-  category: string;
-  description: string;
-  audience: string;
-  sortOrder: number;
+  performer: string;
+  start: string;
+  end: string;
+  note: string;
+  canceled: boolean;
+  day: number;
+}
+
+export interface StageProgram {
+  stageName: string;
+  dayLabel: string;
+  days: number;
+  rev: number;
+  lastUpdated: number;
+  items: StageItem[];
 }
 
 export interface FestivalSettings {
   festivalName: string;
-  subtitle: string;
-  dates: FestivalDay[];
-  openingHours: Record<FestivalDay, { start: string; end: string }>;
   emergencyNotice: string;
-  lastPublishedAt: string;
 }
 
 export interface FestivalData {
-  settings: FestivalSettings;
   booths: Booth[];
-  timetable: TimetableEvent[];
+  stage: StageProgram;
+  settings: FestivalSettings;
   version: string;
-  fetchedAt: string;
+  fetchedAt: number;
 }
 
-export type ImportKind = "booths" | "timetable";
-export type ImportMode = "merge" | "replace";
+// staff: ブース運用・作成・編集・ステージ進行の管理ができる。
+// admin: 上記に加え、PIN変更・重要なお知らせ・全データ入替・スナップショット復元ができる。
+export type StaffRole = "staff" | "admin";
 
-export interface ValidationIssue {
-  level: "error" | "warning";
-  row: number;
-  field?: string;
-  message: string;
-}
-
-export interface ImportPreview<T> {
-  kind: ImportKind;
-  rows: T[];
-  issues: ValidationIssue[];
-  sourceName: string;
-}
-
-export interface PendingMutation {
-  id: string;
+export interface SnapshotMeta {
+  id: number;
   createdAt: string;
-  type: "update_booth";
-  boothId: string;
-  expectedRevision: number;
-  patch: Partial<Booth>;
+  label: string;
+  boothCount: number;
+  eventCount: number;
 }
 
 export interface ApiResult<T> {
@@ -92,5 +97,5 @@ export interface ApiResult<T> {
   data?: T;
   error?: string;
   code?: string;
-  current?: Booth;
+  notModified?: boolean;
 }
