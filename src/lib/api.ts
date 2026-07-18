@@ -1,36 +1,34 @@
-import { defaultFestivalData } from "../data/defaults";
-import type {
-  ApiResult,
-  Booth,
-  FestivalData,
-  FestivalSettings,
-  ImportMode,
-  PendingMutation,
-  SnapshotMeta,
-  StaffRole,
-  TimetableEvent,
-} from "../types";
+import { makeBooth, sanitizeStage, seedBooths, seedStage } from "./festival";
+import type { ApiResult, Booth, FestivalData, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "../types";
+
+/*
+ * v4プロトタイプの `window.storage`(Claude環境専用)を置き換えるデータ層。
+ *  - 共有API(Supabase Edge Function)が設定されていれば全端末で同期する。
+ *  - 未設定ならデモモードとして、この端末のlocalStorageだけで完結する。
+ * 書き込みはブース単位のLWW(後勝ち)。「1ブース1端末」を前提とするv4の設計を踏襲し、
+ * 通信断のときは端末に保留して復帰時に再送する。
+ */
 
 const API_URL = (import.meta.env.VITE_FESTIVAL_API_URL as string | undefined)?.trim();
 const PUBLIC_KEY = ((import.meta.env.VITE_FESTIVAL_PUBLIC_KEY as string | undefined) ?? (import.meta.env.VITE_FESTIVAL_ANON_KEY as string | undefined))?.trim();
-const CACHE_KEY = "machitime:v5:cache";
-const DEMO_KEY = "machitime:v5:demo";
-const PENDING_KEY = "machitime:v5:pending";
-const DEMO_PIN_KEY = "machitime:v5:demo-pin";
-const DEMO_ADMIN_PIN_KEY = "machitime:v5:demo-admin-pin";
-const DEMO_SNAPSHOTS_KEY = "machitime:v5:demo-snapshots";
 
-// 校内Wi-Fiでは応答が返らないままハングする接続が珍しくない。
-// タイムアウトを切らないと「読み込み中」のまま画面が固まり続ける。
+const CACHE_KEY = "machitime:v6:cache";
+const DEMO_KEY = "machitime:v6:demo";
+const PENDING_KEY = "machitime:v6:pending";
+const DEMO_PIN_KEY = "machitime:v6:demo-pin";
+const DEMO_ADMIN_PIN_KEY = "machitime:v6:demo-admin-pin";
+const DEMO_SNAPSHOTS_KEY = "machitime:v6:demo-snapshots";
+
 const REQUEST_TIMEOUT_MS = 12_000;
 
 export const backendConfigured = Boolean(API_URL && PUBLIC_KEY);
-
-export const DEMO_STAFF_PIN = "202608";
+export const DEMO_STAFF_PIN = "2025";
 export const DEMO_ADMIN_PIN = "202609";
 
-function cloneDefault(): FestivalData {
-  return structuredClone(defaultFestivalData);
+interface PendingWrite {
+  boothId: string;
+  doc: Booth;
+  queuedAt: number;
 }
 
 function readJson<T>(key: string, fallback: T): T {
@@ -46,8 +44,43 @@ function writeJson(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Storage can be unavailable in private mode. The app still works in memory.
+    // プライベートモード等でstorageが使えなくても、メモリ上の状態で動き続ける。
   }
+}
+
+const DEFAULT_SETTINGS: FestivalSettings = { festivalName: "文化祭", emergencyNotice: "" };
+
+function makeDemoData(): FestivalData {
+  return {
+    booths: seedBooths(),
+    stage: seedStage(),
+    settings: { ...DEFAULT_SETTINGS },
+    version: `demo-${Date.now()}`,
+    fetchedAt: Date.now(),
+  };
+}
+
+function readDemo(): FestivalData {
+  const stored = readJson<FestivalData | null>(DEMO_KEY, null);
+  if (!stored) {
+    const seeded = makeDemoData();
+    writeJson(DEMO_KEY, seeded);
+    return seeded;
+  }
+  return {
+    booths: (Array.isArray(stored.booths) ? stored.booths : []).map((b) => makeBooth(b, (b as Booth).id)),
+    stage: sanitizeStage(stored.stage),
+    settings: { ...DEFAULT_SETTINGS, ...(stored.settings ?? {}) },
+    version: stored.version || `demo-${Date.now()}`,
+    fetchedAt: stored.fetchedAt || Date.now(),
+  };
+}
+
+function writeDemo(data: FestivalData): FestivalData {
+  const next = { ...data, version: `demo-${Date.now()}`, fetchedAt: Date.now() };
+  writeJson(DEMO_KEY, next);
+  writeJson(CACHE_KEY, next);
+  return next;
 }
 
 async function remote<T>(action: string, payload: Record<string, unknown> = {}): Promise<ApiResult<T>> {
@@ -57,10 +90,7 @@ async function remote<T>(action: string, payload: Record<string, unknown> = {}):
   try {
     const response = await fetch(API_URL, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        apikey: PUBLIC_KEY,
-      },
+      headers: { "content-type": "application/json", apikey: PUBLIC_KEY },
       body: JSON.stringify({ action, ...payload }),
       signal: controller.signal,
     });
@@ -70,7 +100,6 @@ async function remote<T>(action: string, payload: Record<string, unknown> = {}):
         ok: false,
         error: typeof body.error === "string" ? body.error : `通信に失敗しました (${response.status})`,
         code: typeof body.code === "string" ? body.code : `HTTP_${response.status}`,
-        current: body.current as Booth | undefined,
       };
     }
     return { ok: true, data: (body.data ?? body) as T };
@@ -85,7 +114,16 @@ async function remote<T>(action: string, payload: Record<string, unknown> = {}):
 }
 
 export function cachedData(): FestivalData {
-  return readJson<FestivalData>(CACHE_KEY, readJson<FestivalData>(DEMO_KEY, cloneDefault()));
+  if (!backendConfigured) return readDemo();
+  const cached = readJson<FestivalData | null>(CACHE_KEY, null);
+  if (!cached) return makeDemoData();
+  return {
+    booths: (Array.isArray(cached.booths) ? cached.booths : []).map((b) => makeBooth(b, (b as Booth).id)),
+    stage: sanitizeStage(cached.stage),
+    settings: { ...DEFAULT_SETTINGS, ...(cached.settings ?? {}) },
+    version: cached.version || "",
+    fetchedAt: cached.fetchedAt || 0,
+  };
 }
 
 export function hasCachedData(): boolean {
@@ -97,17 +135,25 @@ export function hasCachedData(): boolean {
 }
 
 // knownVersionが最新と一致する間はサーバーが notModified を返し、
-// 大きなペイロードの転送とDB読取をスキップできる(全端末ポーリングの負荷対策)。
-export async function fetchFestivalData(knownVersion?: string): Promise<ApiResult<FestivalData>> {
+// アイコン画像を含む大きなペイロードの転送をスキップする(全端末ポーリングの負荷対策)。
+export async function fetchAll(knownVersion?: string): Promise<ApiResult<FestivalData>> {
   if (!backendConfigured) {
-    const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
-    writeJson(DEMO_KEY, data);
-    return { ok: true, data };
+    return { ok: true, data: readDemo() };
   }
   const result = await remote<FestivalData & { notModified?: boolean }>("get_public", knownVersion ? { knownVersion } : {});
   if (result.ok && result.data?.notModified) return { ok: true, notModified: true };
-  if (result.ok && result.data) writeJson(CACHE_KEY, result.data);
-  return result;
+  if (result.ok && result.data) {
+    const data: FestivalData = {
+      booths: (result.data.booths ?? []).map((b) => makeBooth(b, b.id)),
+      stage: sanitizeStage(result.data.stage),
+      settings: { ...DEFAULT_SETTINGS, ...(result.data.settings ?? {}) },
+      version: String(result.data.version ?? ""),
+      fetchedAt: Date.now(),
+    };
+    writeJson(CACHE_KEY, data);
+    return { ok: true, data };
+  }
+  return { ok: false, error: result.error, code: result.code };
 }
 
 function demoRole(pin: string): StaffRole | null {
@@ -124,69 +170,86 @@ export async function verifyPin(pin: string): Promise<ApiResult<{ valid: boolean
   return remote("verify_pin", { pin });
 }
 
-export async function updateBooth(pin: string, booth: Booth, expectedRevision: number): Promise<ApiResult<Booth>> {
+/* ── ブース書込(LWW)。通信断は保留キューへ ── */
+
+export function pendingWrites(): PendingWrite[] {
+  return readJson<PendingWrite[]>(PENDING_KEY, []);
+}
+
+function queueWrite(booth: Booth): void {
+  const pending = pendingWrites().filter((item) => item.boothId !== booth.id);
+  pending.push({ boothId: booth.id, doc: booth, queuedAt: Date.now() });
+  writeJson(PENDING_KEY, pending.slice(-60));
+}
+
+export async function saveBooth(pin: string, booth: Booth): Promise<ApiResult<Booth> & { queued?: boolean }> {
   if (!backendConfigured) {
     if (!demoRole(pin)) return { ok: false, error: "スタッフPINが違います。", code: "INVALID_PIN" };
-    const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
+    const data = readDemo();
     const index = data.booths.findIndex((item) => item.id === booth.id);
-    if (index < 0) return { ok: false, error: "対象の企画が見つかりません。", code: "NOT_FOUND" };
-    const current = data.booths[index];
-    if (current && current.revision !== expectedRevision) return { ok: false, error: "別の端末で更新されています。", code: "CONFLICT", current };
-    data.booths[index] = { ...booth, revision: expectedRevision + 1, lastUpdated: new Date().toISOString() };
-    data.fetchedAt = new Date().toISOString();
-    writeJson(DEMO_KEY, data);
-    writeJson(CACHE_KEY, data);
-    return { ok: true, data: data.booths[index] };
+    const next = makeBooth({ ...booth, rev: (index >= 0 ? data.booths[index]!.rev : 0) + 1 }, booth.id);
+    if (index >= 0) data.booths[index] = next; else data.booths.push(next);
+    writeDemo(data);
+    return { ok: true, data: next };
   }
-  return remote("update_booth", { pin, booth, expectedRevision });
+  const result = await remote<Booth>("save_booth", { pin, booth });
+  if (!result.ok && result.code === "NETWORK") {
+    queueWrite(booth);
+    return { ok: true, data: booth, queued: true };
+  }
+  return result;
 }
 
-export async function applyImport(
-  pin: string,
-  mode: ImportMode,
-  booths?: Booth[],
-  timetable?: TimetableEvent[],
-): Promise<ApiResult<FestivalData>> {
-  if (!backendConfigured) {
-    if (demoRole(pin) !== "admin") return { ok: false, error: "データ取込は管理者PINが必要です。", code: "ADMIN_ONLY" };
-    if (mode === "replace") await createSnapshot(pin, "全件置換前の自動保存");
-    const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
-    if (booths) {
-      if (mode === "replace") data.booths = booths;
-      else {
-        const map = new Map(data.booths.map((item) => [item.id, item]));
-        booths.forEach((item) => map.set(item.id, { ...map.get(item.id), ...item }));
-        data.booths = [...map.values()];
-      }
+export async function flushPending(pin: string): Promise<{ completed: number; failed: number }> {
+  const pending = pendingWrites();
+  let completed = 0;
+  let failed = 0;
+  for (const item of pending) {
+    const result = await remote<Booth>("save_booth", { pin, booth: item.doc });
+    if (result.ok) {
+      writeJson(PENDING_KEY, pendingWrites().filter((p) => p.boothId !== item.boothId || p.queuedAt !== item.queuedAt));
+      completed += 1;
+    } else if (result.code === "NETWORK") {
+      failed += 1;
+      break; // まだオフライン。残りは次回に回す。
+    } else {
+      // PIN無効などの恒久エラーは破棄して数え上げる。
+      writeJson(PENDING_KEY, pendingWrites().filter((p) => p.boothId !== item.boothId || p.queuedAt !== item.queuedAt));
+      failed += 1;
     }
-    if (timetable) {
-      if (mode === "replace") data.timetable = timetable;
-      else {
-        const map = new Map(data.timetable.map((item) => [item.id, item]));
-        timetable.forEach((item) => map.set(item.id, item));
-        data.timetable = [...map.values()];
-      }
-    }
-    data.settings.lastPublishedAt = new Date().toISOString();
-    data.version = `demo-${Date.now()}`;
-    data.fetchedAt = new Date().toISOString();
-    writeJson(DEMO_KEY, data);
-    writeJson(CACHE_KEY, data);
-    return { ok: true, data };
   }
-  return remote("apply_import", { pin, mode, booths, timetable });
+  return { completed, failed };
 }
 
-export async function updateFestivalSettings(pin: string, patch: Partial<FestivalSettings>): Promise<ApiResult<FestivalData>> {
+export async function deleteBooth(pin: string, boothId: string): Promise<ApiResult<{ deleted: boolean }>> {
   if (!backendConfigured) {
-    if (demoRole(pin) !== "admin") return { ok: false, error: "重要なお知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" };
-    const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
-    data.settings = { ...data.settings, ...patch, lastPublishedAt: new Date().toISOString() };
-    data.version = `demo-${Date.now()}`;
-    data.fetchedAt = new Date().toISOString();
-    writeJson(DEMO_KEY, data);
-    writeJson(CACHE_KEY, data);
-    return { ok: true, data };
+    if (!demoRole(pin)) return { ok: false, error: "スタッフPINが違います。", code: "INVALID_PIN" };
+    const data = readDemo();
+    data.booths = data.booths.filter((item) => item.id !== boothId);
+    writeDemo(data);
+    return { ok: true, data: { deleted: true } };
+  }
+  return remote("delete_booth", { pin, boothId });
+}
+
+export async function saveStage(pin: string, stage: StageProgram): Promise<ApiResult<StageProgram>> {
+  if (!backendConfigured) {
+    if (!demoRole(pin)) return { ok: false, error: "スタッフPINが違います。", code: "INVALID_PIN" };
+    const data = readDemo();
+    data.stage = sanitizeStage(stage);
+    writeDemo(data);
+    return { ok: true, data: data.stage };
+  }
+  return remote("save_stage", { pin, stage });
+}
+
+export async function updateSettings(pin: string, patch: Partial<FestivalSettings>): Promise<ApiResult<FestivalSettings>> {
+  if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "この操作は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    const data = readDemo();
+    data.settings = { ...data.settings, ...patch };
+    writeDemo(data);
+    return { ok: true, data: data.settings };
   }
   return remote("update_settings", { pin, patch });
 }
@@ -200,22 +263,39 @@ export async function changePin(currentPin: string, target: StaffRole, nextPin: 
   return remote("change_pin", { pin: currentPin, target, nextPin });
 }
 
+/* ── 全データ入替(JSONバックアップの読込・サンプルへのリセット) ── */
+
+export async function replaceAll(pin: string, booths: Booth[], stage?: StageProgram): Promise<ApiResult<FestivalData>> {
+  if (!backendConfigured) {
+    if (demoRole(pin) !== "admin") return { ok: false, error: "全データの入替は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    await createSnapshot(pin, "入替前の自動保存");
+    const data = readDemo();
+    data.booths = booths.map((b) => makeBooth(b, b.id));
+    if (stage) data.stage = sanitizeStage(stage);
+    const next = writeDemo(data);
+    return { ok: true, data: next };
+  }
+  return remote("replace_all", { pin, booths, stage });
+}
+
+/* ── サーバー側スナップショット ── */
+
 interface DemoSnapshot extends SnapshotMeta {
-  payload: { booths: Booth[]; timetable: TimetableEvent[] };
+  payload: { booths: Booth[]; stage: StageProgram };
 }
 
 export async function createSnapshot(pin: string, label: string): Promise<ApiResult<SnapshotMeta>> {
   if (!backendConfigured) {
     if (demoRole(pin) !== "admin") return { ok: false, error: "スナップショットは管理者PINが必要です。", code: "ADMIN_ONLY" };
-    const data = readJson<FestivalData>(DEMO_KEY, cloneDefault());
+    const data = readDemo();
     const snapshots = readJson<DemoSnapshot[]>(DEMO_SNAPSHOTS_KEY, []);
     const snapshot: DemoSnapshot = {
       id: Date.now(),
       createdAt: new Date().toISOString(),
       label,
       boothCount: data.booths.length,
-      eventCount: data.timetable.length,
-      payload: { booths: data.booths, timetable: data.timetable },
+      eventCount: data.stage.items.length,
+      payload: { booths: data.booths, stage: data.stage },
     };
     writeJson(DEMO_SNAPSHOTS_KEY, [snapshot, ...snapshots].slice(0, 5));
     return { ok: true, data: snapshot };
@@ -236,49 +316,7 @@ export async function restoreSnapshot(pin: string, snapshotId: number): Promise<
     if (demoRole(pin) !== "admin") return { ok: false, error: "復元は管理者PINが必要です。", code: "ADMIN_ONLY" };
     const snapshot = readJson<DemoSnapshot[]>(DEMO_SNAPSHOTS_KEY, []).find((item) => item.id === snapshotId);
     if (!snapshot) return { ok: false, error: "対象のスナップショットが見つかりません。", code: "NOT_FOUND" };
-    return applyImport(pin, "replace", snapshot.payload.booths, snapshot.payload.timetable);
+    return replaceAll(pin, snapshot.payload.booths, snapshot.payload.stage);
   }
   return remote("restore_snapshot", { pin, snapshotId });
-}
-
-export function pendingMutations(): PendingMutation[] {
-  return readJson<PendingMutation[]>(PENDING_KEY, []);
-}
-
-export function queueMutation(mutation: PendingMutation): void {
-  const pending = pendingMutations().filter((item) => item.id !== mutation.id);
-  pending.push(mutation);
-  writeJson(PENDING_KEY, pending.slice(-50));
-}
-
-export function removePendingMutation(id: string): void {
-  writeJson(PENDING_KEY, pendingMutations().filter((item) => item.id !== id));
-}
-
-export async function flushPending(pin: string): Promise<{ completed: number; conflicts: number; failed: number }> {
-  const pending = pendingMutations();
-  let completed = 0;
-  let conflicts = 0;
-  let failed = 0;
-  for (const mutation of pending) {
-    const data = cachedData();
-    const current = data.booths.find((item) => item.id === mutation.boothId);
-    if (!current) {
-      removePendingMutation(mutation.id);
-      failed += 1;
-      continue;
-    }
-    const next = { ...current, ...mutation.patch };
-    const result = await updateBooth(pin, next, mutation.expectedRevision);
-    if (result.ok) {
-      removePendingMutation(mutation.id);
-      completed += 1;
-    } else if (result.code === "CONFLICT") {
-      removePendingMutation(mutation.id);
-      conflicts += 1;
-    } else {
-      failed += 1;
-    }
-  }
-  return { completed, conflicts, failed };
 }

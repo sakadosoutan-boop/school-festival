@@ -29,8 +29,7 @@ const PUBLISHABLE_KEYS = new Set([
   Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "",
   Deno.env.get("SUPABASE_ANON_KEY") ?? "",
 ].filter(Boolean));
-// カンマ区切りで複数オリジンを許可（本番 + ローカル検証など）。
-// 例: ALLOWED_ORIGIN=https://xxx.github.io,http://localhost:5173
+// カンマ区切りで複数オリジンを許可(本番 + ローカル検証など)。
 const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGIN") ?? "*").split(",").map((value) => value.trim()).filter(Boolean);
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
@@ -41,14 +40,14 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-const BOOTH_CATEGORY_SET = new Set(["attraction", "food", "game", "experience", "stage", "exhibition", "other"]);
-const BOOTH_STATUS_SET = new Set(["open", "paused", "closed", "sold_out"]);
-const FESTIVAL_DAY_SET = new Set(["2026-08-29", "2026-08-30"]);
+const CATEGORY_SET = new Set(["attraction", "food", "game", "experience", "stage", "exhibition", "other"]);
+const BUILDING_SET = new Set(["hr", "special", "admin", "extra", "outdoor", "legacy"]);
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-const ID_RE = /^[a-z0-9][a-z0-9_-]{1,63}$/;
+const ID_RE = /^[A-Za-z0-9:_-]{1,64}$/;
+const ICON_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const MAX_WAIT_MINUTES = 600;
-const HISTORY_LIMIT = 48;
-const PUBLIC_HISTORY_LIMIT = 24;
+const MAX_BOOTHS = 300;
+const MAX_DOC_CHARS = 160_000;
 const SNAPSHOT_KEEP = 30;
 const GLOBAL_LIMIT_ID = "global";
 
@@ -83,6 +82,8 @@ function callerFingerprint(request: Request): Promise<string> {
   const agent = request.headers.get("user-agent") ?? "unknown";
   return sha256(`${ip}|${agent.slice(0, 160)}`);
 }
+
+/* ── PIN総当たり対策: 端末別 + 全体の二段レート制限 ── */
 
 async function rateLimitState(identifier: string): Promise<{ blocked: boolean; retryAfterSeconds: number }> {
   const { data, error } = await supabase
@@ -122,8 +123,6 @@ async function bumpFailure(identifier: string, maxAttempts: number, blockMinutes
   if (upsertError) throw upsertError;
 }
 
-// 端末単位の制限はUAを変えるだけで回避できてしまうため、全体の失敗回数にも
-// 上限を設ける。10分間に全体で40回失敗したら、PIN認証全体を10分間停止する。
 async function recordFailedPin(identifier: string): Promise<void> {
   await bumpFailure(identifier, 8, 15);
   await bumpFailure(GLOBAL_LIMIT_ID, 40, 10);
@@ -132,14 +131,13 @@ async function recordFailedPin(identifier: string): Promise<void> {
 async function clearFailedPins(identifier: string): Promise<void> {
   const { error } = await supabase.from("staff_pin_attempts").delete().eq("identifier", identifier);
   if (error) throw error;
-  // 使い終わった記録が溜まり続けないよう、古い行はログイン成功時に掃除する。
   await supabase.from("staff_pin_attempts").delete()
     .neq("identifier", GLOBAL_LIMIT_ID)
     .lt("updated_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString());
 }
 
 async function resolvePinRole(pin: unknown): Promise<"admin" | "staff" | null> {
-  if (typeof pin !== "string" || !/^\d{6,8}$/.test(pin)) return null;
+  if (typeof pin !== "string" || !/^\d{4,8}$/.test(pin)) return null;
   const { data, error } = await supabase.rpc("resolve_pin_role", { p_pin: pin });
   if (error) throw error;
   return data === "admin" || data === "staff" ? data : null;
@@ -150,175 +148,150 @@ async function audit(action: string, target: string, caller: string, detail: Rec
   if (error) console.error("audit_log insert failed", error);
 }
 
-function clampInt(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(parsed)));
-}
+/* ── サニタイズ(サーバー側のmakeBooth相当)。
+     クライアント検証をすり抜けた値を既定値へ矯正し、サイズ上限で肥大を防ぐ。 ── */
 
-function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
-  const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
+function num(v: unknown, d: number, min: number, max: number): number {
+  const parsed = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(parsed)) return d;
   return Math.min(max, Math.max(min, parsed));
 }
-
-function boundedText(value: unknown, maxLength: number): string {
-  return typeof value === "string" ? value.slice(0, maxLength) : "";
+function int(v: unknown, d: number, min: number, max: number): number {
+  return Math.round(num(v, d, min, max));
+}
+function str(v: unknown, max: number, d = ""): string {
+  return typeof v === "string" ? v.slice(0, max) : d;
+}
+function bool(v: unknown, d: boolean): boolean {
+  return typeof v === "boolean" ? v : d;
 }
 
-function isoOrNow(value: unknown): string {
-  return typeof value === "string" && Number.isFinite(Date.parse(value)) ? value : new Date().toISOString();
+function waitFor(people: number, capacity: number, cycleSeconds: number): number {
+  if (people <= 0 || capacity <= 0) return 0;
+  return Math.min(MAX_WAIT_MINUTES, Math.max(1, Math.round((Math.ceil(people / capacity) * cycleSeconds) / 60)));
 }
 
-function waitFor(queueLength: number, capacity: number, cycleMinutes: number): number {
-  if (queueLength <= 0 || capacity <= 0 || cycleMinutes <= 0) return 0;
-  return Math.min(MAX_WAIT_MINUTES, Math.max(1, Math.round(Math.ceil(queueLength / capacity) * cycleMinutes)));
-}
+type Sanitized = { ok: true; value: Record<string, unknown> } | { ok: false; reason: string };
 
-type SanitizeResult = { ok: true; value: Record<string, unknown> } | { ok: false; reason: string };
-
-// クライアントの検証をすり抜けた値がDBの制約違反 → 原因の分からない500になる
-// のを防ぐため、サーバー側でも同じ規則で正規化してから書き込む。
-// waitMinutes はクライアントの申告値を信用せず、必ずここで再計算する。
-function sanitizeBooth(raw: Record<string, unknown>): SanitizeResult {
-  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
+  const id = str(raw.id, 64).trim();
   if (!ID_RE.test(id)) return { ok: false, reason: `id「${id || "(空)"}」が不正です` };
-  const name = boundedText(raw.name, 80).trim();
-  if (!name) return { ok: false, reason: `id「${id}」の企画名が空です` };
-  const category = typeof raw.category === "string" && BOOTH_CATEGORY_SET.has(raw.category) ? raw.category : null;
-  if (!category) return { ok: false, reason: `id「${id}」のcategoryが不正です` };
-  const location = boundedText(raw.location, 120).trim();
-  if (!location) return { ok: false, reason: `id「${id}」の場所が空です` };
-  const days = Array.isArray(raw.days) ? raw.days.filter((day): day is string => typeof day === "string" && FESTIVAL_DAY_SET.has(day)) : [];
-  if (days.length === 0) return { ok: false, reason: `id「${id}」の開催日が不正です` };
-  const openTime = typeof raw.openTime === "string" && TIME_RE.test(raw.openTime) ? raw.openTime : null;
-  const closeTime = typeof raw.closeTime === "string" && TIME_RE.test(raw.closeTime) ? raw.closeTime : null;
-  if (!openTime || !closeTime || openTime >= closeTime) return { ok: false, reason: `id「${id}」の開催時間が不正です（HH:MM、開始<終了）` };
+  const name = str(raw.name, 20).trim();
+  if (!name) return { ok: false, reason: `id「${id}」のブース名が空です` };
 
-  const capacity = clampInt(raw.capacity, 1, 500, 1);
-  const cycleMinutes = clampNumber(raw.cycleMinutes, 0.25, 180, 5);
-  const queueLength = clampInt(raw.queueLength, 0, 5000, 0);
+  const iconImage = str(raw.iconImage, 120_000);
+  if (iconImage && !ICON_RE.test(iconImage)) return { ok: false, reason: `id「${id}」のアイコン画像の形式が不正です` };
+
+  const products = (Array.isArray(raw.products) ? raw.products : [])
+    .filter((p): p is Record<string, unknown> => !!p && typeof p === "object")
+    .slice(0, 20)
+    .map((p) => ({
+      id: str(p.id, 32) || `p_${Math.random().toString(36).slice(2, 7)}`,
+      name: str(p.name, 15),
+      stock: int(p.stock, 0, 0, 9999),
+      soldOut: bool(p.soldOut, false),
+    }))
+    .filter((p) => p.name);
+
+  const peopleInLine = int(raw.peopleInLine, 0, 0, 500);
+  const capacity = int(raw.capacity, 2, 1, 200);
+  const cycleSeconds = int(raw.cycleSeconds, 180, 15, 3600);
+
   const history = (Array.isArray(raw.history) ? raw.history : [])
-    .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
-    .filter((entry) => typeof entry.at === "string" && Number.isFinite(Date.parse(entry.at)) && Number.isFinite(Number(entry.waitMinutes)))
-    .slice(-HISTORY_LIMIT)
-    .map((entry) => ({ at: entry.at, waitMinutes: clampInt(entry.waitMinutes, 0, MAX_WAIT_MINUTES, 0) }));
+    .filter((h): h is Record<string, unknown> => !!h && typeof h === "object" && Number.isFinite(Number((h as Record<string, unknown>).wait)))
+    .slice(-30)
+    .map((h) => ({ ts: int(h.ts, Date.now(), 0, 9_999_999_999_999), wait: int(h.wait, 0, 0, MAX_WAIT_MINUTES) }));
 
-  return {
-    ok: true,
-    value: {
-      id,
-      name,
-      organizer: boundedText(raw.organizer, 80),
-      category,
-      location,
-      description: boundedText(raw.description, 240),
-      emoji: boundedText(raw.emoji, 8) || "🎪",
-      days,
-      openTime,
-      closeTime,
-      capacity,
-      cycleMinutes,
-      queueLength,
-      waitMinutes: waitFor(queueLength, capacity, cycleMinutes),
-      status: typeof raw.status === "string" && BOOTH_STATUS_SET.has(raw.status) ? raw.status : "closed",
-      notice: boundedText(raw.notice, 120),
-      sortOrder: clampInt(raw.sortOrder, -100000, 100000, 0),
-      revision: clampInt(raw.revision, 1, Number.MAX_SAFE_INTEGER, 1),
-      history,
-      lastUpdated: isoOrNow(raw.lastUpdated),
-    },
+  const cycleHistory = (Array.isArray(raw.cycleHistory) ? raw.cycleHistory : [])
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+    .slice(-10)
+    .map((v) => int(v, 180, 15, 3600));
+
+  const undoRaw = raw.undoSnapshot;
+  const undoSnapshot = undoRaw && typeof undoRaw === "object"
+    ? {
+      peopleInLine: int((undoRaw as Record<string, unknown>).peopleInLine, 0, 0, 500),
+      cycleHistory: (Array.isArray((undoRaw as Record<string, unknown>).cycleHistory) ? (undoRaw as Record<string, unknown>).cycleHistory as unknown[] : [])
+        .filter((v): v is number => typeof v === "number").slice(-10),
+      lastServedAt: typeof (undoRaw as Record<string, unknown>).lastServedAt === "number" ? (undoRaw as Record<string, unknown>).lastServedAt : null,
+      waitMinutes: int((undoRaw as Record<string, unknown>).waitMinutes, 0, 0, MAX_WAIT_MINUTES),
+      ts: int((undoRaw as Record<string, unknown>).ts, 0, 0, 9_999_999_999_999),
+    }
+    : null;
+
+  const building = BUILDING_SET.has(str(raw.building, 16)) ? str(raw.building, 16) : "hr";
+  const value: Record<string, unknown> = {
+    id,
+    name,
+    emoji: str(raw.emoji, 16) || "🎪",
+    iconImage,
+    category: CATEGORY_SET.has(str(raw.category, 20)) ? str(raw.category, 20) : "other",
+    products,
+    organizer: str(raw.organizer, 80),
+    orgType: raw.orgType === "club" ? "club" : raw.orgType === "other" ? "other" : "class",
+    grade: int(raw.grade, 2, 1, 9),
+    classNum: int(raw.classNum, 1, 1, 9),
+    orgName: str(raw.orgName, 30),
+    building,
+    floor: int(raw.floor, 1, 1, 9),
+    room: str(raw.room, 20),
+    location: str(raw.location, 120),
+    description: str(raw.description, 120),
+    isOpen: bool(raw.isOpen, true),
+    peopleInLine,
+    capacity,
+    cycleSeconds,
+    waitMinutes: waitFor(peopleInLine, capacity, cycleSeconds),
+    history,
+    cycleHistory,
+    // 端末の時計ズレで鮮度表示が壊れないよう、更新時刻はサーバーが刻む
+    lastUpdated: Date.now(),
+    lastServedAt: typeof raw.lastServedAt === "number" ? raw.lastServedAt : null,
+    undoSnapshot,
+    rev: int(raw.rev, 0, 0, Number.MAX_SAFE_INTEGER),
   };
-}
 
-function sanitizeEvent(raw: Record<string, unknown>): SanitizeResult {
-  const id = typeof raw.id === "string" ? raw.id.trim() : "";
-  if (!ID_RE.test(id)) return { ok: false, reason: `id「${id || "(空)"}」が不正です` };
-  const day = typeof raw.day === "string" && FESTIVAL_DAY_SET.has(raw.day) ? raw.day : null;
-  if (!day) return { ok: false, reason: `id「${id}」の開催日が不正です` };
-  const startTime = typeof raw.startTime === "string" && TIME_RE.test(raw.startTime) ? raw.startTime : null;
-  const endTime = typeof raw.endTime === "string" && TIME_RE.test(raw.endTime) ? raw.endTime : null;
-  if (!startTime || !endTime || startTime >= endTime) return { ok: false, reason: `id「${id}」の時間が不正です（HH:MM、開始<終了）` };
-  const title = boundedText(raw.title, 80).trim();
-  if (!title) return { ok: false, reason: `id「${id}」の演目名が空です` };
-  const venue = boundedText(raw.venue, 80).trim();
-  if (!venue) return { ok: false, reason: `id「${id}」の会場が空です` };
-  return {
-    ok: true,
-    value: {
-      id,
-      day,
-      startTime,
-      endTime,
-      title,
-      organizer: boundedText(raw.organizer, 80),
-      venue,
-      category: boundedText(raw.category, 40) || "その他",
-      description: boundedText(raw.description, 300),
-      audience: boundedText(raw.audience, 60) || "全来場者",
-      sortOrder: clampInt(raw.sortOrder, -100000, 100000, 0),
-    },
-  };
-}
-
-function sanitizeRows(
-  rows: unknown[],
-  sanitize: (raw: Record<string, unknown>) => SanitizeResult,
-): { ok: true; values: Record<string, unknown>[] } | { ok: false; reason: string } {
-  const values: Record<string, unknown>[] = [];
-  for (let index = 0; index < rows.length; index += 1) {
-    const raw = rows[index];
-    if (typeof raw !== "object" || raw === null) return { ok: false, reason: `${index + 1}件目のデータ形式が不正です` };
-    const result = sanitize(raw as Record<string, unknown>);
-    if (!result.ok) return { ok: false, reason: `${index + 1}件目：${result.reason}` };
-    values.push(result.value);
+  if (JSON.stringify(value).length > MAX_DOC_CHARS) {
+    return { ok: false, reason: `id「${id}」のデータが大きすぎます(画像を小さくしてください)` };
   }
-  return { ok: true, values };
+  return { ok: true, value };
 }
 
-function boothFromDb(row: Record<string, unknown>) {
-  const history = Array.isArray(row.history) ? row.history : [];
+function sanitizeStage(raw: Record<string, unknown>): Sanitized {
+  const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
+  if (itemsRaw.length > 100) return { ok: false, reason: "公演が多すぎます(最大100件)" };
+  const items = [];
+  for (const it of itemsRaw) {
+    if (!it || typeof it !== "object") continue;
+    const item = it as Record<string, unknown>;
+    const start = str(item.start, 5);
+    const end = str(item.end, 5);
+    if (!TIME_RE.test(start) || !TIME_RE.test(end)) return { ok: false, reason: `公演「${str(item.title, 30) || "(無題)"}」の時刻はHH:MM形式にしてください` };
+    items.push({
+      id: ID_RE.test(str(item.id, 64)) ? str(item.id, 64) : `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: str(item.title, 30),
+      performer: str(item.performer, 30),
+      start,
+      end,
+      note: str(item.note, 40),
+      canceled: bool(item.canceled, false),
+      day: item.day === 2 ? 2 : 1,
+    });
+  }
   return {
-    id: row.id,
-    name: row.name,
-    organizer: row.organizer,
-    category: row.category,
-    location: row.location,
-    description: row.description,
-    emoji: row.emoji,
-    days: row.days,
-    openTime: row.open_time,
-    closeTime: row.close_time,
-    capacity: row.capacity,
-    cycleMinutes: Number(row.cycle_minutes),
-    queueLength: row.queue_length,
-    waitMinutes: row.wait_minutes,
-    status: row.status,
-    notice: row.notice,
-    sortOrder: row.sort_order,
-    revision: Number(row.revision),
-    lastUpdated: row.last_updated,
-    // 全端末が数十秒ごとに受信する一覧ペイロードを軽く保つため、
-    // 配信する履歴は直近分だけに絞る（DBには最大48件保持）。
-    history: history.slice(-PUBLIC_HISTORY_LIMIT),
+    ok: true,
+    value: {
+      stageName: str(raw.stageName, 30) || "体育館ステージ",
+      dayLabel: str(raw.dayLabel, 30) || "文化祭ステージ",
+      days: raw.days === 1 ? 1 : 2,
+      rev: int(raw.rev, 0, 0, Number.MAX_SAFE_INTEGER),
+      lastUpdated: Date.now(),
+      items,
+    },
   };
 }
 
-function timetableFromDb(row: Record<string, unknown>) {
-  return {
-    id: row.id,
-    day: row.day,
-    startTime: row.start_time,
-    endTime: row.end_time,
-    title: row.title,
-    organizer: row.organizer,
-    venue: row.venue,
-    category: row.category,
-    description: row.description,
-    audience: row.audience,
-    sortOrder: row.sort_order,
-  };
-}
+/* ── データ読み出し ── */
 
 async function dataEtag(): Promise<string> {
   const { data, error } = await supabase.rpc("get_data_etag");
@@ -327,67 +300,50 @@ async function dataEtag(): Promise<string> {
 }
 
 async function getPublicData(version?: string) {
-  const [settingsResult, boothsResult, timetableResult] = await Promise.all([
-    supabase.from("festival_settings").select("festival_name,subtitle,dates,opening_hours,emergency_notice,last_published_at,version").eq("id", true).single(),
-    supabase.from("booths").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true }),
-    supabase.from("timetable_events").select("*").order("day", { ascending: true }).order("start_time", { ascending: true }).order("sort_order", { ascending: true }),
+  const [settingsResult, boothsResult, stageResult] = await Promise.all([
+    supabase.from("festival_settings").select("festival_name,emergency_notice").eq("id", true).single(),
+    supabase.from("booth_docs").select("doc").order("updated_at", { ascending: false }),
+    supabase.from("stage_docs").select("doc").eq("id", true).maybeSingle(),
   ]);
-
-  const error = settingsResult.error ?? boothsResult.error ?? timetableResult.error;
+  const error = settingsResult.error ?? boothsResult.error ?? stageResult.error;
   if (error) throw error;
-  const settings = settingsResult.data;
   return {
+    booths: (boothsResult.data ?? []).map((row) => row.doc),
+    stage: stageResult.data?.doc ?? null,
     settings: {
-      festivalName: settings.festival_name,
-      subtitle: settings.subtitle,
-      dates: settings.dates,
-      openingHours: settings.opening_hours,
-      emergencyNotice: settings.emergency_notice,
-      lastPublishedAt: settings.last_published_at,
+      festivalName: settingsResult.data.festival_name,
+      emergencyNotice: settingsResult.data.emergency_notice,
     },
-    booths: (boothsResult.data ?? []).map((row) => boothFromDb(row)),
-    timetable: (timetableResult.data ?? []).map((row) => timetableFromDb(row)),
     version: version ?? await dataEtag(),
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: Date.now(),
   };
 }
 
-function boothToDb(booth: Record<string, unknown>, revision: number) {
-  return {
-    name: booth.name,
-    organizer: booth.organizer ?? "",
-    category: booth.category,
-    location: booth.location,
-    description: booth.description ?? "",
-    emoji: booth.emoji ?? "🎪",
-    days: booth.days ?? [],
-    open_time: booth.openTime,
-    close_time: booth.closeTime,
-    capacity: booth.capacity,
-    cycle_minutes: booth.cycleMinutes,
-    queue_length: booth.queueLength,
-    wait_minutes: booth.waitMinutes,
-    status: booth.status,
-    notice: booth.notice ?? "",
-    sort_order: booth.sortOrder ?? 0,
-    history: booth.history ?? [],
-    last_updated: new Date().toISOString(),
+async function upsertBoothDoc(doc: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const id = doc.id as string;
+  const { data: existing } = await supabase.from("booth_docs").select("rev").eq("id", id).maybeSingle();
+  const nextRev = Math.max(Number(existing?.rev ?? 0) + 1, Number(doc.rev ?? 0));
+  const stored = { ...doc, rev: nextRev };
+  const { error } = await supabase.from("booth_docs").upsert({
+    id,
+    doc: stored,
+    rev: nextRev,
     updated_at: new Date().toISOString(),
-    revision: revision + 1,
-  };
+  });
+  if (error) throw error;
+  return stored;
 }
 
-// 全件置換や復元の直前に、その時点の全データをサーバー側にも保存する。
-// 端末側のダウンロードだけだと、その端末を紛失した時点で復元手段が消える。
 async function storeSnapshot(label: string): Promise<{ id: number; createdAt: string; label: string; boothCount: number; eventCount: number }> {
   const data = await getPublicData("snapshot");
+  const stage = data.stage as { items?: unknown[] } | null;
   const { data: inserted, error } = await supabase
     .from("backups")
     .insert({
       label,
       booth_count: data.booths.length,
-      event_count: data.timetable.length,
-      payload: { settings: data.settings, booths: data.booths, timetable: data.timetable },
+      event_count: Array.isArray(stage?.items) ? stage.items.length : 0,
+      payload: { booths: data.booths, stage: data.stage, settings: data.settings },
     })
     .select("id,created_at,label,booth_count,event_count")
     .single();
@@ -408,6 +364,21 @@ async function storeSnapshot(label: string): Promise<{ id: number; createdAt: st
     boothCount: Number(inserted.booth_count),
     eventCount: Number(inserted.event_count),
   };
+}
+
+async function replaceAllDocs(booths: Record<string, unknown>[], stage: Record<string, unknown> | null): Promise<void> {
+  const { error: delError } = await supabase.from("booth_docs").delete().neq("id", "");
+  if (delError) throw delError;
+  if (booths.length > 0) {
+    const now = new Date().toISOString();
+    const rows = booths.map((doc) => ({ id: doc.id as string, doc, rev: Number(doc.rev ?? 1) || 1, updated_at: now }));
+    const { error } = await supabase.from("booth_docs").insert(rows);
+    if (error) throw error;
+  }
+  if (stage) {
+    const { error } = await supabase.from("stage_docs").upsert({ id: true, doc: stage, rev: Number(stage.rev ?? 1) || 1, updated_at: new Date().toISOString() });
+    if (error) throw error;
+  }
 }
 
 Deno.serve(async (request) => {
@@ -454,95 +425,78 @@ Deno.serve(async (request) => {
 
     if (action === "verify_pin") return respond({ ok: true, data: { valid: true, role } });
 
-    if (action === "update_booth") {
+    if (action === "save_booth") {
       const booth = body.booth as Record<string, unknown> | undefined;
-      const expectedRevision = Number(body.expectedRevision);
-      if (!booth || typeof booth.id !== "string" || !Number.isInteger(expectedRevision)) {
+      if (!booth || typeof booth !== "object") {
         return respond({ ok: false, error: "更新データが不正です。", code: "INVALID_PAYLOAD" }, 400);
       }
       const sanitized = sanitizeBooth(booth);
-      if (!sanitized.ok) {
-        return respond({ ok: false, error: `更新データが不正です：${sanitized.reason}`, code: "INVALID_PAYLOAD" }, 400);
+      if (!sanitized.ok) return respond({ ok: false, error: `更新データが不正です：${sanitized.reason}`, code: "INVALID_PAYLOAD" }, 400);
+
+      const { count } = await supabase.from("booth_docs").select("id", { count: "exact", head: true });
+      const { data: exists } = await supabase.from("booth_docs").select("id").eq("id", sanitized.value.id as string).maybeSingle();
+      if (!exists && (count ?? 0) >= MAX_BOOTHS) {
+        return respond({ ok: false, error: `ブース数の上限(${MAX_BOOTHS})に達しています。`, code: "TOO_MANY_BOOTHS" }, 400);
       }
 
-      const { data, error } = await supabase
-        .from("booths")
-        .update(boothToDb(sanitized.value, expectedRevision))
-        .eq("id", sanitized.value.id as string)
-        .eq("revision", expectedRevision)
-        .select("*")
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) {
-        const { data: current } = await supabase.from("booths").select("*").eq("id", sanitized.value.id as string).maybeSingle();
-        return respond({ ok: false, error: "別の端末で先に更新されています。", code: "CONFLICT", current: current ? boothFromDb(current) : null }, 409);
-      }
-      await audit("update_booth", String(sanitized.value.id), identifier, {
-        queueLength: sanitized.value.queueLength,
-        status: sanitized.value.status,
-        revision: Number(data.revision),
+      const stored = await upsertBoothDoc(sanitized.value);
+      await audit("save_booth", String(sanitized.value.id), identifier, {
+        people: sanitized.value.peopleInLine,
+        isOpen: sanitized.value.isOpen,
+        name: sanitized.value.name,
       });
-      return respond({ ok: true, data: boothFromDb(data) });
+      return respond({ ok: true, data: stored });
     }
 
-    if (action === "apply_import") {
-      if (role !== "admin") return respond({ ok: false, error: "データ取込は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
-      const mode = body.mode;
-      if (mode !== "merge" && mode !== "replace") return respond({ ok: false, error: "反映方法が不正です。", code: "INVALID_MODE" }, 400);
-      if (!Array.isArray(body.booths) && !Array.isArray(body.timetable)) return respond({ ok: false, error: "取込データがありません。", code: "EMPTY_IMPORT" }, 400);
-      if ((Array.isArray(body.booths) && body.booths.length > 500) || (Array.isArray(body.timetable) && body.timetable.length > 1000)) {
-        return respond({ ok: false, error: "一度に取り込める件数を超えています。", code: "TOO_MANY_ROWS" }, 400);
-      }
-
-      let booths: Record<string, unknown>[] | null = null;
-      if (Array.isArray(body.booths)) {
-        const result = sanitizeRows(body.booths, sanitizeBooth);
-        if (!result.ok) return respond({ ok: false, error: `取込データが不正です。${result.reason}`, code: "INVALID_ROW" }, 400);
-        booths = result.values;
-      }
-      let timetable: Record<string, unknown>[] | null = null;
-      if (Array.isArray(body.timetable)) {
-        const result = sanitizeRows(body.timetable, sanitizeEvent);
-        if (!result.ok) return respond({ ok: false, error: `取込データが不正です。${result.reason}`, code: "INVALID_ROW" }, 400);
-        timetable = result.values;
-      }
-
-      if (mode === "replace") await storeSnapshot("全件置換前の自動保存");
-      const { error } = await supabase.rpc("apply_festival_import", {
-        p_mode: mode,
-        p_booths: booths,
-        p_timetable: timetable,
-      });
+    if (action === "delete_booth") {
+      const boothId = typeof body.boothId === "string" ? body.boothId : "";
+      if (!ID_RE.test(boothId)) return respond({ ok: false, error: "対象が不正です。", code: "INVALID_PAYLOAD" }, 400);
+      const { data: existing } = await supabase.from("booth_docs").select("doc").eq("id", boothId).maybeSingle();
+      const { error } = await supabase.from("booth_docs").delete().eq("id", boothId);
       if (error) throw error;
-      await audit("apply_import", String(mode), identifier, {
-        booths: booths?.length ?? 0,
-        timetable: timetable?.length ?? 0,
-      });
-      return respond({ ok: true, data: await getPublicData() });
+      // 誤削除に備え、消したドキュメント全体を監査ログへ残す(手動復旧の材料)
+      await audit("delete_booth", boothId, identifier, { doc: existing?.doc ?? null });
+      return respond({ ok: true, data: { deleted: true } });
+    }
+
+    if (action === "save_stage") {
+      const stage = body.stage as Record<string, unknown> | undefined;
+      if (!stage || typeof stage !== "object") return respond({ ok: false, error: "ステージデータが不正です。", code: "INVALID_PAYLOAD" }, 400);
+      const sanitized = sanitizeStage(stage);
+      if (!sanitized.ok) return respond({ ok: false, error: `ステージデータが不正です：${sanitized.reason}`, code: "INVALID_PAYLOAD" }, 400);
+
+      const { data: existing } = await supabase.from("stage_docs").select("rev").eq("id", true).maybeSingle();
+      const nextRev = Math.max(Number(existing?.rev ?? 0) + 1, Number(sanitized.value.rev ?? 0));
+      const stored = { ...sanitized.value, rev: nextRev };
+      const { error } = await supabase.from("stage_docs").upsert({ id: true, doc: stored, rev: nextRev, updated_at: new Date().toISOString() });
+      if (error) throw error;
+      await audit("save_stage", "stage", identifier, { items: (stored.items as unknown[]).length });
+      return respond({ ok: true, data: stored });
     }
 
     if (action === "update_settings") {
-      if (role !== "admin") return respond({ ok: false, error: "重要なお知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
+      if (role !== "admin") return respond({ ok: false, error: "全体お知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
       const patch = body.patch as Record<string, unknown> | undefined;
       if (!patch || typeof patch.emergencyNotice !== "string") {
         return respond({ ok: false, error: "設定データが不正です。", code: "INVALID_PAYLOAD" }, 400);
       }
       const emergencyNotice = patch.emergencyNotice.trim();
       if (emergencyNotice.length > 180) {
-        return respond({ ok: false, error: "重要なお知らせは180文字以内にしてください。", code: "NOTICE_TOO_LONG" }, 400);
+        return respond({ ok: false, error: "お知らせは180文字以内にしてください。", code: "NOTICE_TOO_LONG" }, 400);
       }
       const { error } = await supabase.rpc("set_emergency_notice", { p_notice: emergencyNotice });
       if (error) throw error;
       await audit("update_settings", "emergency_notice", identifier, { length: emergencyNotice.length });
-      return respond({ ok: true, data: await getPublicData() });
+      const data = await getPublicData();
+      return respond({ ok: true, data: data.settings });
     }
 
     if (action === "change_pin") {
       if (role !== "admin") return respond({ ok: false, error: "PIN変更は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
       const target = body.target === "admin" ? "admin" : "staff";
       const nextPin = body.nextPin;
-      if (typeof nextPin !== "string" || !/^\d{6,8}$/.test(nextPin)) {
-        return respond({ ok: false, error: "新しいPINは6〜8桁の数字にしてください。", code: "INVALID_PIN_FORMAT" }, 400);
+      if (typeof nextPin !== "string" || !/^\d{4,8}$/.test(nextPin)) {
+        return respond({ ok: false, error: "新しいPINは4〜8桁の数字にしてください。", code: "INVALID_PIN_FORMAT" }, 400);
       }
       const { error } = await supabase.rpc(target === "admin" ? "set_admin_pin" : "set_staff_pin", { p_pin: nextPin });
       if (error) throw error;
@@ -550,9 +504,34 @@ Deno.serve(async (request) => {
       return respond({ ok: true, data: { changed: true } });
     }
 
+    if (action === "replace_all") {
+      if (role !== "admin") return respond({ ok: false, error: "全データの入替は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
+      const boothsRaw = Array.isArray(body.booths) ? body.booths : [];
+      if (boothsRaw.length > MAX_BOOTHS) return respond({ ok: false, error: `一度に入れ替えられるのは${MAX_BOOTHS}件までです。`, code: "TOO_MANY_ROWS" }, 400);
+      const booths: Record<string, unknown>[] = [];
+      for (let i = 0; i < boothsRaw.length; i += 1) {
+        const raw = boothsRaw[i];
+        if (!raw || typeof raw !== "object") return respond({ ok: false, error: `${i + 1}件目のデータ形式が不正です。`, code: "INVALID_ROW" }, 400);
+        const sanitized = sanitizeBooth(raw as Record<string, unknown>);
+        if (!sanitized.ok) return respond({ ok: false, error: `${i + 1}件目：${sanitized.reason}`, code: "INVALID_ROW" }, 400);
+        booths.push(sanitized.value);
+      }
+      let stage: Record<string, unknown> | null = null;
+      if (body.stage && typeof body.stage === "object") {
+        const sanitized = sanitizeStage(body.stage as Record<string, unknown>);
+        if (!sanitized.ok) return respond({ ok: false, error: `ステージ：${sanitized.reason}`, code: "INVALID_ROW" }, 400);
+        stage = sanitized.value;
+      }
+
+      await storeSnapshot("入替前の自動保存");
+      await replaceAllDocs(booths, stage);
+      await audit("replace_all", "all", identifier, { booths: booths.length, stage: Boolean(stage) });
+      return respond({ ok: true, data: await getPublicData() });
+    }
+
     if (action === "create_snapshot") {
       if (role !== "admin") return respond({ ok: false, error: "スナップショットの保存は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
-      const label = boundedText(body.label, 40).trim() || "手動保存";
+      const label = (typeof body.label === "string" ? body.label : "").slice(0, 40).trim() || "手動保存";
       const snapshot = await storeSnapshot(label);
       await audit("create_snapshot", String(snapshot.id), identifier, { label });
       return respond({ ok: true, data: snapshot });
@@ -580,29 +559,28 @@ Deno.serve(async (request) => {
 
     if (action === "restore_snapshot") {
       if (role !== "admin") return respond({ ok: false, error: "復元は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
-      const snapshotId = clampInt(body.snapshotId, 1, Number.MAX_SAFE_INTEGER, 0);
+      const snapshotId = int(body.snapshotId, 0, 0, Number.MAX_SAFE_INTEGER);
       const { data: row, error } = await supabase.from("backups").select("id,payload").eq("id", snapshotId).maybeSingle();
       if (error) throw error;
       if (!row) return respond({ ok: false, error: "対象のスナップショットが見つかりません。", code: "NOT_FOUND" }, 404);
 
-      const payload = row.payload as { booths?: unknown[]; timetable?: unknown[] };
-      const booths = sanitizeRows(Array.isArray(payload.booths) ? payload.booths : [], sanitizeBooth);
-      const timetable = sanitizeRows(Array.isArray(payload.timetable) ? payload.timetable : [], sanitizeEvent);
-      if (!booths.ok || !timetable.ok) {
-        return respond({ ok: false, error: "スナップショットの内容を検証できませんでした。", code: "INVALID_SNAPSHOT" }, 400);
+      const payload = row.payload as { booths?: unknown[]; stage?: unknown };
+      const boothsRaw = Array.isArray(payload.booths) ? payload.booths : [];
+      const booths: Record<string, unknown>[] = [];
+      for (const raw of boothsRaw) {
+        if (!raw || typeof raw !== "object") continue;
+        const sanitized = sanitizeBooth(raw as Record<string, unknown>);
+        if (sanitized.ok) booths.push(sanitized.value);
+      }
+      let stage: Record<string, unknown> | null = null;
+      if (payload.stage && typeof payload.stage === "object") {
+        const sanitized = sanitizeStage(payload.stage as Record<string, unknown>);
+        if (sanitized.ok) stage = sanitized.value;
       }
 
       await storeSnapshot("復元前の自動保存");
-      const { error: importError } = await supabase.rpc("apply_festival_import", {
-        p_mode: "replace",
-        p_booths: booths.values,
-        p_timetable: timetable.values,
-      });
-      if (importError) throw importError;
-      await audit("restore_snapshot", String(snapshotId), identifier, {
-        booths: booths.values.length,
-        timetable: timetable.values.length,
-      });
+      await replaceAllDocs(booths, stage);
+      await audit("restore_snapshot", String(snapshotId), identifier, { booths: booths.length });
       return respond({ ok: true, data: await getPublicData() });
     }
 

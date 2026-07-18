@@ -1,4 +1,4 @@
-const CACHE = "machitime-shell-v6";
+const CACHE = "machitime-shell-v7";
 const CORE = [
   "./",
   "./manifest.webmanifest",
@@ -8,8 +8,6 @@ const CORE = [
   "./icons/icon-512.png",
   "./icons/maskable-512.png",
   "./OPERATION_MANUAL.md",
-  "./templates/booths-template.csv",
-  "./templates/timetable-template.csv",
 ];
 
 // addAllは1件でも404があると全体が失敗し、オフライン対応が丸ごと無効になる。
