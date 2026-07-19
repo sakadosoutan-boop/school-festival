@@ -126,6 +126,7 @@ async function remote<T>(action: string, payload: Record<string, unknown> = {}):
         ok: false,
         error: typeof body.error === "string" ? body.error : `通信に失敗しました (${response.status})`,
         code: typeof body.code === "string" ? body.code : `HTTP_${response.status}`,
+        current: body.current,
       };
     }
     return { ok: true, data: (body.data ?? body) as T };

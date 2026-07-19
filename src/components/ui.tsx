@@ -82,22 +82,40 @@ export const WaitChart = ({ history, color }: { history: Booth["history"]; color
   );
 };
 
-/* 汎用ボトムシート(Escキーでも閉じられる) */
+/* 汎用ボトムシート(Escキーでも閉じられる)
+   シートは重ねて開かれることがある(設定→保存履歴など)。bodyのスクロール固定は
+   モジュール共有のスタックで数え、最後の1枚が閉じたときだけ復元する。
+   Esc・Tabのフォーカストラップは最前面のシートだけが処理する。
+   ※以前は各シートが個別にoverflowを保存/復元しており、重ねて閉じると
+     hiddenが残って全画面スクロール不能になるバグがあった。 */
+const sheetStack: symbol[] = [];
+let bodyOverflowBackup = "";
+
 export const Sheet = ({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
-    const orig = document.body.style.overflow;
+    const token = Symbol("sheet");
+    if (sheetStack.length === 0) {
+      bodyOverflowBackup = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+    }
+    sheetStack.push(token);
+    const isTop = () => sheetStack[sheetStack.length - 1] === token;
+
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.body.style.overflow = "hidden";
     const focusableSelector = "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+    // 初回マウント時だけ先頭へフォーカス(再レンダリングのたびに奪わない)
     const focusFirst = window.requestAnimationFrame(() => {
       dialogRef.current?.querySelector<HTMLElement>(focusableSelector)?.focus();
     });
     const onKey = (event: KeyboardEvent) => {
+      if (!isTop()) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !dialogRef.current) return;
@@ -121,11 +139,13 @@ export const Sheet = ({ onClose, title, children }: { onClose: () => void; title
     window.addEventListener("keydown", onKey);
     return () => {
       window.cancelAnimationFrame(focusFirst);
-      document.body.style.overflow = orig;
+      const index = sheetStack.indexOf(token);
+      if (index >= 0) sheetStack.splice(index, 1);
+      if (sheetStack.length === 0) document.body.style.overflow = bodyOverflowBackup;
       window.removeEventListener("keydown", onKey);
       previousFocus?.focus();
     };
-  }, [onClose]);
+  }, []);
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
       <div

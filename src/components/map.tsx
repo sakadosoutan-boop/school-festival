@@ -20,19 +20,19 @@ const MAP_MISC: MapMisc[] = [
   { id: "trash_area", label: "ゴミ捨て場", x: 130, y: 2, w: 28, h: 7, kind: "misc" },
   { id: "bike_left", label: "自転車置き場", x: 4, y: 12, w: 8, h: 80, kind: "misc", vertical: true },
   { id: "gate", label: "正門", x: 4, y: 112, w: 8, h: 16, kind: "gate" },
-  { id: "photo", label: "フォト\nスポット", x: 16, y: 16, w: 22, h: 11, kind: "misc" },
   { id: "panel", label: "顔出し\nパネル", x: 16, y: 92, w: 14, h: 11, kind: "misc" },
   { id: "fountain", label: "噴水", x: 18, y: 120, w: 12, h: 11, kind: "misc" },
   { id: "gaikoku", label: "外国語科棟", x: 40, y: 126, w: 24, h: 12, kind: "facility", bId: "gaikoku" },
   { id: "piloti", label: "ピロティー", x: 66, y: 126, w: 20, h: 12, kind: "facility" },
   { id: "shokudo", label: "1F食堂 🍴\n2F合宿棟", x: 96, y: 124, w: 30, h: 14, kind: "facility" },
-  { id: "gym", label: "体育館", x: 40, y: 146, w: 34, h: 14, kind: "gym" },
+  { id: "gym", label: "体育館 🎤", x: 40, y: 146, w: 34, h: 14, kind: "gym" },
   { id: "bushitsu", label: "部室棟/卓球場", x: 80, y: 146, w: 34, h: 14, kind: "facility" },
   { id: "ground", label: "グラウンド", x: 178, y: 46, w: 58, h: 76, kind: "ground", bId: "outdoor" },
 ];
 
-// かえる広場(野外企画エリア・ゴミ箱あり)
-const FROG_PLAZA = { x: 70, y: 46, w: 44, h: 8, bId: "outdoor", label: "かえる広場" };
+// かえる広場(野外企画エリア・アンブレラスカイ☂️・ゴミ箱あり)。
+// アイコンと文字が重ならないよう、実マップに合わせて幅を広めに取る。
+const FROG_PLAZA = { x: 46, y: 46, w: 68, h: 8, bId: "outdoor", label: "かえる広場" };
 
 interface MapRoom { n: string; w: number; off?: boolean }
 interface MapBlock { id: string; label: string; lx: number; ly: number; x: number; y: number; w: number; floorH: number; entrance?: { x: number; y: number; w: number; h: number; label: string }; floors: Array<{ f: string; rooms: MapRoom[] }> }
@@ -57,7 +57,7 @@ const MAP_BLOCKS: MapBlock[] = [
       { f: "2F", rooms: [{ n: "会議室", w: 20 }, { n: "放送室", w: 20 }, { n: "職員室", w: 60 }] },
       { f: "1F", rooms: [{ n: "事務室", w: 20 }, { n: "校長室", w: 20 }, { n: "応接室", w: 20 }, { n: "保健室", w: 20 }, { n: "進路資料室", w: 20 }] },
     ] },
-  { id: "extra", label: "増設棟", lx: 146, ly: 82, x: 146, y: 84, w: 30, floorH: 8,
+  { id: "extra", label: "増設棟", lx: 157, ly: 81, x: 146, y: 84, w: 30, floorH: 8,
     floors: [
       { f: "3F", rooms: [{ n: "1-8", w: 15 }, { n: "1-9", w: 15 }] },
       { f: "2F", rooms: [{ n: "2-8", w: 15 }, { n: "2-9", w: 15 }] },
@@ -65,10 +65,10 @@ const MAP_BLOCKS: MapBlock[] = [
     ] },
 ];
 
-// 自販機(赤マーカーの位置): 昇降口下 / 増設棟1F(3-9横) / 食堂入口
+// 自販機(赤マーカーの位置): 昇降口下 / 増設棟の下 / 食堂入口
 const VENDING_SPOTS = [
   { x: 26, y: 89 },
-  { x: 153, y: 104 },
+  { x: 152, y: 113 },
   { x: 101, y: 121.5 },
 ];
 
@@ -87,6 +87,11 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
+  // PCのマウスでも地図を横に動かせるように、ドラッグでスクロールさせる
+  // (ホイールやスクロールバーに気づかない人が多いため)。
+  const panRef = useRef<HTMLDivElement | null>(null);
+  const drag = useRef({ startX: 0, startLeft: 0, active: false });
+
   return (
     <>
       <header className="sticky top-0 z-30 overflow-hidden" style={{ background: "linear-gradient(120deg,#3ddc97 0%,#4cc9f0 55%,#9b5de5 100%)" }}>
@@ -100,9 +105,22 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
         </div>
       </header>
 
-      <main className="max-w-xl mx-auto px-4 pt-4">
+      <main className="max-w-xl md:max-w-4xl mx-auto px-4 pt-4">
         <div className="rounded-3xl border-2 border-stone-200 bg-white p-3 mb-3 shadow-sm relative">
-          <div className="overflow-x-auto scrollbar-none -mx-1 px-1">
+          <div
+            ref={panRef}
+            className="overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing"
+            onPointerDown={(e) => {
+              if (e.pointerType !== "mouse" || !panRef.current) return;
+              drag.current = { startX: e.clientX, startLeft: panRef.current.scrollLeft, active: true };
+            }}
+            onPointerMove={(e) => {
+              if (!drag.current.active || e.pointerType !== "mouse" || !panRef.current) return;
+              panRef.current.scrollLeft = drag.current.startLeft - (e.clientX - drag.current.startX);
+            }}
+            onPointerUp={() => { drag.current.active = false; }}
+            onPointerLeave={() => { drag.current.active = false; }}
+          >
             <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", minWidth: 760, display: "block" }}>
               <rect x="0" y="0" width={MAP_W} height={MAP_H} rx="2.5" fill="#f6f8f4" />
 
@@ -150,13 +168,6 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                           textAnchor="middle" fontSize={m.kind === "misc" ? 2.7 : 3.1} fontWeight="800" fill={tfill}>{line}</text>
                       ))
                     )}
-                    {m.kind === "gym" && (
-                      <g className="anim-bobble">
-                        <rect x={mcx - 4.5} y={m.y - 8.5} width="9" height="8" rx="2.4" fill="#fff" stroke="#e8e2da" strokeWidth="0.4" />
-                        <path d={`M ${mcx - 1.6} ${m.y - 0.6} L ${mcx + 1.6} ${m.y - 0.6} L ${mcx} ${m.y + 1.6} Z`} fill="#fff" stroke="#e8e2da" strokeWidth="0.3" />
-                        <text x={mcx} y={m.y - 2.4} textAnchor="middle" fontSize="4.6">🎤</text>
-                      </g>
-                    )}
                   </g>
                 );
               })}
@@ -174,11 +185,11 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                     {has && <rect x={FROG_PLAZA.x - 1} y={FROG_PLAZA.y - 1} width={FROG_PLAZA.w + 2} height={FROG_PLAZA.h + 2} rx="2.2" fill="#ffb157" opacity="0.22" />}
                     <rect x={FROG_PLAZA.x} y={FROG_PLAZA.y} width={FROG_PLAZA.w} height={FROG_PLAZA.h} rx="1.6"
                       fill={has ? "#fff3e0" : "#f7f1e6"} stroke={has ? "#ff9e3d" : "#e0d8c8"} strokeWidth={has ? 0.9 : 0.5} />
-                    <text x={fcx - 4} y={fcy + 1.1} textAnchor="middle" fontSize="3.1" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
-                    {has && wait != null && <text x={fcx + 12} y={fcy + 1.1} textAnchor="middle" fontSize="2.7" fontWeight="900" fill="#e6206b">{wait}分</text>}
-                    {hasFood && <text x={FROG_PLAZA.x + 3} y={fcy + 1.3} textAnchor="middle" fontSize="3">🍴</text>}
-                    <text x={FROG_PLAZA.x + 8} y={fcy + 1.3} textAnchor="middle" fontSize="3">☂️</text>
-                    <text x={FROG_PLAZA.x + FROG_PLAZA.w - 3} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">🗑️</text>
+                    <text x={FROG_PLAZA.x + 5} y={fcy + 1.3} textAnchor="middle" fontSize="3">☂️</text>
+                    {hasFood && <text x={FROG_PLAZA.x + 11} y={fcy + 1.3} textAnchor="middle" fontSize="3">🍴</text>}
+                    <text x={fcx} y={fcy + 1.1} textAnchor="middle" fontSize="3.1" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
+                    {has && wait != null && <text x={FROG_PLAZA.x + FROG_PLAZA.w - 15} y={fcy + 1.1} textAnchor="middle" fontSize="2.7" fontWeight="900" fill="#e6206b">{wait}分</text>}
+                    <text x={FROG_PLAZA.x + FROG_PLAZA.w - 5} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">🗑️</text>
                   </g>
                 );
               })()}
@@ -223,7 +234,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                               )}
                               {rm.n && !rm.off && (
                                 <text x={rx + rm.w / 2} y={has ? fy + blk.floorH / 2 - 0.7 : fy + blk.floorH / 2 + 1.1}
-                                  textAnchor="middle" fontSize={rm.n.length >= 4 ? 2.6 : 3} fontWeight="800"
+                                  textAnchor="middle" fontSize={rm.n.length >= 6 ? 2.1 : rm.n.length >= 4 ? 2.6 : 3} fontWeight="800"
                                   fill={has ? "#5b3a1e" : "#8a857c"}>{rm.n}</text>
                               )}
                               {has && bt && (
@@ -263,9 +274,9 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
             <span className="flex items-center gap-1"><span className="font-black" style={{ color: "#e6206b" }}>12分</span> 待ち時間</span>
           </div>
         </div>
-        <div className="text-[11px] text-stone-400 mb-5 text-center">← 横にスクロールできます</div>
+        <div className="text-[11px] text-stone-400 mb-5 text-center md:hidden">↔ スワイプで横に動かせます</div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 max-w-xl mx-auto">
           {BUILDINGS.map((b) => {
             const list = grouped[b.id] || [];
             if (list.length === 0) return null;
@@ -301,7 +312,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
           })}
         </div>
 
-        <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">
+        <div className="text-center text-[11px] text-stone-400 mt-6 font-medium max-w-xl mx-auto">
           会場の位置関係を表した模式マップです · 棟をタップすると企画一覧へ移動します
         </div>
       </main>
