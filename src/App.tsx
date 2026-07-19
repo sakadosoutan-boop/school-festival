@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, HelpCircle, Map as MapIcon, Megaphone, Music, RefreshCw, ShieldCheck, Star, WifiOff } from "lucide-react";
 import {
-  avgCycle, calcWait, CATEGORIES, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS, seedBooths, seedStage,
+  avgCycle, calcWait, CATEGORIES, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS, sanitizeStage, seedBooths, seedStage,
   STALE_MINUTES, THEME, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
@@ -269,6 +269,13 @@ function AppInner(): React.JSX.Element {
       if (result.queued && Date.now() - queueToastAt.current > 8_000) {
         queueToastAt.current = Date.now();
         showToast("通信が不安定です。更新は保留し、回復後に自動送信します", "warn");
+      } else if (!result.ok && result.code === "CONFLICT") {
+        // サーバーの現在値へ同期し、古い端末の表示のまま操作を続けさせない
+        if (result.current && typeof result.current === "object") {
+          const server = makeBooth(result.current, (result.current as Booth).id);
+          setBooths((prev) => prev.map((b) => (b.id === server.id ? server : b)));
+        }
+        showToast("別の端末で先に更新されました。最新の値を表示しています", "warn");
       } else if (!result.ok && result.code !== "NETWORK") {
         showToast(result.error ?? "更新を送信できませんでした", "error");
       }
@@ -327,8 +334,17 @@ function AppInner(): React.JSX.Element {
     const stamped = { ...next, rev: (next.rev || 0) + 1, lastUpdated: Date.now() };
     setStage(stamped);
     void apiSaveStage(staffPin, stamped).then((result) => {
-      if (!result.ok && result.code === "NETWORK") showToast("通信できません。ステージの変更は再接続後にもう一度保存してください", "warn");
-      else if (!result.ok) showToast(result.error ?? "ステージを保存できませんでした", "error");
+      if (result.ok && result.data) {
+        // サーバーが確定したrevを取り込む(次の保存が競合扱いにならないように)
+        setStage(sanitizeStage(result.data));
+      } else if (result.code === "CONFLICT") {
+        if (result.current && typeof result.current === "object") setStage(sanitizeStage(result.current));
+        showToast("別の端末で先にステージが更新されました。最新を読み込みました。もう一度保存してください", "warn");
+      } else if (result.code === "NETWORK") {
+        showToast("通信できません。ステージの変更は再接続後にもう一度保存してください", "warn");
+      } else if (!result.ok) {
+        showToast(result.error ?? "ステージを保存できませんでした", "error");
+      }
     });
   }, [showToast, staffPin]);
 

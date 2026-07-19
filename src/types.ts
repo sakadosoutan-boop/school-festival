@@ -98,4 +98,6 @@ export interface ApiResult<T> {
   error?: string;
   code?: string;
   notModified?: boolean;
+  // CONFLICT(409)時にサーバーが返す現在値。呼び出し側で最新状態へ同期する。
+  current?: unknown;
 }

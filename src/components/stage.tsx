@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, Clock, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
 import {
   itemStatus, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, stageNowNext, THEME, toMin,
@@ -162,6 +162,7 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
   const PX_PER_MIN = 3.0;
   const TIME_COL = 52;
   const accent = THEME.pink;
+  const nowLineRef = useRef<HTMLDivElement | null>(null);
 
   const starts = items.map((i) => toMin(i.start)).filter((v): v is number => v != null);
   const ends = items.map((i) => toMin(i.end)).filter((v): v is number => v != null);
@@ -182,7 +183,15 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
 
   return (
     <div>
-      <div className="text-xs font-bold mb-2" style={{ color: THEME.ink }}>タイムテーブル（{items.length}公演）</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-bold" style={{ color: THEME.ink }}>タイムテーブル（{items.length}公演）</div>
+        {nowVisible && (
+          <button onClick={() => nowLineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            className="text-[10px] font-black px-2.5 py-1 rounded-full text-white active:scale-95 shadow-sm" style={{ background: accent }}>
+            🕒 現在時刻へ
+          </button>
+        )}
+      </div>
       <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden">
         <div className="flex items-center justify-center text-xs font-black text-white py-2.5" style={{ background: THEME.festGradient }}>
           🎤 ステージ進行表
@@ -203,7 +212,7 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
               <div key={t} className="absolute left-0 right-0" style={{ top: (t - minT) * PX_PER_MIN, borderTop: t % 60 === 0 ? "1px solid #e7e5e4" : "1px dashed #f0efed" }} />
             ))}
             {nowVisible && (
-              <div className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowOffset }}>
+              <div ref={nowLineRef} className="absolute left-0 right-0 z-20 pointer-events-none" style={{ top: nowOffset }}>
                 <div className="h-0.5" style={{ background: accent }} />
                 <div className="absolute right-1 -top-2.5 px-1.5 py-0.5 rounded-full text-[9px] font-black text-white shadow" style={{ background: accent }}>NOW {minToHHMM(refMin)}</div>
               </div>
@@ -266,6 +275,14 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
   const [draft, setDraft] = useState<StageProgram>(() => program || seedStage());
   const [editItem, setEditItem] = useState<StageItem | null>(null);
   const [creating, setCreating] = useState(false);
+  // 保存が成功する(=サーバーでrevが進む)たびに、下書きのrevも追従させる。
+  // これが無いと2回目以降の保存が常に古いrevで競合扱いになる。
+  useEffect(() => {
+    if (!program) return;
+    setDraft((current) => (program.rev || 0) > (current.rev || 0)
+      ? { ...current, rev: program.rev, lastUpdated: program.lastUpdated }
+      : current);
+  }, [program]);
   const dayCount = draft.days || 1;
   const [day, setDay] = useState(1);
   const items = useMemo(() => sortItems(draft.items.filter((i) => (i.day || 1) === day)), [draft.items, day]);
