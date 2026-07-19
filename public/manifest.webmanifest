@@ -1,11 +1,13 @@
 {
   "name": "まちたいむ - 文化祭ガイド",
   "short_name": "まちたいむ",
+  "id": "./",
   "description": "文化祭の企画一覧・タイムテーブル・待ち時間を確認できます。",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
+  "prefer_related_applications": false,
   "background_color": "#fff7ed",
   "theme_color": "#ff4d8d",
   "icons": [

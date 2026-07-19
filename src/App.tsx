@@ -14,10 +14,12 @@ import type { Booth, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } f
 import { EmptyState, Spinner, StatCard, TabButton, Toast, Confirm } from "./components/ui";
 import type { ToastType } from "./components/ui";
 import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
+import { InstallAppCard, InstallInstructionsSheet } from "./components/install";
 import { CalculatorSheet, EditBoothSheet, SettingsSheet, SnapshotSheet, StaffBoothPanel, StaffBoothSelector, StaffLogin } from "./components/staff";
 import { StageEditor, StageView } from "./components/stage";
 import { MapView } from "./components/map";
 import logoSrc from "./assets/logo.png";
+import { usePwaInstall } from "./lib/pwa";
 
 const LOCAL_KEY = "machitime:v6:local";
 const SESSION_PIN_KEY = "machitime:v6:staff-pin";
@@ -64,6 +66,7 @@ function AppInner(): React.JSX.Element {
   const [creating, setCreating] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [staffStageOpen, setStaffStageOpen] = useState(false);
@@ -73,6 +76,7 @@ function AppInner(): React.JSX.Element {
 
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [tick, setTick] = useState(0);
+  const { platform: installPlatform, installed: appInstalled, promptAvailable, shouldShow: showInstall, requestInstall } = usePwaInstall();
 
   const toastTimer = useRef<number | null>(null);
   const showToast = useCallback((message: string, type: ToastType = "success") => {
@@ -80,6 +84,18 @@ function AppInner(): React.JSX.Element {
     if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 2500);
   }, []);
+
+  const handleInstall = useCallback(async () => {
+    try {
+      const result = await requestInstall();
+      if (result === "manual") setInstallHelpOpen(true);
+      else if (result === "accepted") showToast("ホーム画面への追加を開始しました");
+      else if (result === "installed") showToast("すでにホーム画面から利用できます", "info");
+      else showToast("ブラウザのメニューからいつでも追加できます", "info");
+    } catch {
+      setInstallHelpOpen(true);
+    }
+  }, [requestInstall, showToast]);
 
   /* ── 同期。編集中のブースはリモートで上書きしない(v4の防衝突設計) ── */
   const protectedRef = useRef<string | null>(null);
@@ -477,6 +493,7 @@ function AppInner(): React.JSX.Element {
       {calcOpen && staffBooth && <CalculatorSheet booth={staffBooth} onClose={() => setCalcOpen(false)} onApply={(u) => { updateBooth(staffBooth.id, u); setCalcOpen(false); showToast(`待ち時間を ${u.waitMinutes}分 に更新しました`); }} />}
       {(editingId || creating) && <EditBoothSheet booth={creating ? null : booths.find((b) => b.id === editingId) ?? null} isNew={creating} onClose={() => { setEditingId(null); setCreating(false); }} onSave={handleSaveBooth} onDelete={() => { if (editingId) void handleDeleteBooth(editingId); }} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
+      {installHelpOpen && <InstallInstructionsSheet platform={installPlatform} onClose={() => setInstallHelpOpen(false)} />}
       {settingsOpen && staffRole && (
         <SettingsSheet
           role={staffRole}
@@ -548,6 +565,8 @@ function AppInner(): React.JSX.Element {
                 <div className="text-sm text-red-900 leading-relaxed"><strong className="font-black">お知らせ：</strong>{settings.emergencyNotice}</div>
               </div>
             )}
+
+            {showInstall && !appInstalled && <InstallAppCard promptAvailable={promptAvailable} onInstall={() => void handleInstall()} />}
 
             {VOTE_FORM_URL && (
               <a href={VOTE_FORM_URL} target="_blank" rel="noopener noreferrer"
