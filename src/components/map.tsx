@@ -30,11 +30,11 @@ const MAP_MISC: MapMisc[] = [
   { id: "ground", label: "グラウンド", x: 178, y: 46, w: 58, h: 76, kind: "ground", bId: "outdoor" },
 ];
 
-// かえる広場(野外企画エリア・アンブレラスカイ☂️・ゴミ箱あり)。
+// かえる広場(イートインスペース・アンブレラスカイ☂️・ゴミ箱あり)。
 // アイコンと文字が重ならないよう、実マップに合わせて幅を広めに取る。
-const FROG_PLAZA = { x: 46, y: 46, w: 68, h: 8, bId: "outdoor", label: "かえる広場" };
+const FROG_PLAZA = { x: 46, y: 45, w: 68, h: 10, bId: "outdoor", label: "かえる広場" };
 
-interface MapRoom { n: string; w: number; off?: boolean }
+interface MapRoom { n: string; w: number; off?: boolean; vend?: boolean }
 interface MapBlock { id: string; label: string; lx: number; ly: number; x: number; y: number; w: number; floorH: number; entrance?: { x: number; y: number; w: number; h: number; label: string }; floors: Array<{ f: string; rooms: MapRoom[] }> }
 
 const MAP_BLOCKS: MapBlock[] = [
@@ -57,18 +57,20 @@ const MAP_BLOCKS: MapBlock[] = [
       { f: "2F", rooms: [{ n: "会議室", w: 20 }, { n: "放送室", w: 20 }, { n: "職員室", w: 60 }] },
       { f: "1F", rooms: [{ n: "事務室", w: 20 }, { n: "校長室", w: 20 }, { n: "応接室", w: 20 }, { n: "保健室", w: 20 }, { n: "進路資料室", w: 20 }] },
     ] },
-  { id: "extra", label: "増設棟", lx: 157, ly: 81, x: 146, y: 84, w: 30, floorH: 8,
+  // 増設棟は管理棟と繋がっているため、横に密着させて階数表示は出さない
+  // (HR棟とは離す)。自販機は自習室の中にあるので、セル内アイコンで示す。
+  { id: "extra", label: "増設棟", lx: 140, ly: 90, x: 140, y: 92, w: 30, floorH: 8,
     floors: [
-      { f: "3F", rooms: [{ n: "1-8", w: 15 }, { n: "1-9", w: 15 }] },
-      { f: "2F", rooms: [{ n: "2-8", w: 15 }, { n: "2-9", w: 15 }] },
-      { f: "1F", rooms: [{ n: "自習室", w: 15 }, { n: "3-9", w: 15 }] },
+      { f: "", rooms: [{ n: "1-8", w: 15 }, { n: "1-9", w: 15 }] },
+      { f: "", rooms: [{ n: "2-8", w: 15 }, { n: "2-9", w: 15 }] },
+      { f: "", rooms: [{ n: "自習室", w: 15, vend: true }, { n: "3-9", w: 15 }] },
     ] },
 ];
 
-// 自販機(赤マーカーの位置): 昇降口下 / 増設棟の下 / 食堂入口
+// 自販機(建物内は該当セルのアイコンで表示):
+//   HR棟1F 昇降口と3-1の間 / 食堂入口
 const VENDING_SPOTS = [
-  { x: 26, y: 89 },
-  { x: 152, y: 113 },
+  { x: 30.8, y: 81.2 },
   { x: 101, y: 121.5 },
 ];
 
@@ -187,7 +189,8 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                       fill={has ? "#fff3e0" : "#f7f1e6"} stroke={has ? "#ff9e3d" : "#e0d8c8"} strokeWidth={has ? 0.9 : 0.5} />
                     <text x={FROG_PLAZA.x + 5} y={fcy + 1.3} textAnchor="middle" fontSize="3">☂️</text>
                     {hasFood && <text x={FROG_PLAZA.x + 11} y={fcy + 1.3} textAnchor="middle" fontSize="3">🍴</text>}
-                    <text x={fcx} y={fcy + 1.1} textAnchor="middle" fontSize="3.1" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
+                    <text x={fcx} y={fcy - 0.6} textAnchor="middle" fontSize="3.1" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
+                    <text x={fcx} y={fcy + 3.6} textAnchor="middle" fontSize="2.2" fontWeight="800" fill={has ? "#a06a35" : "#b3aca0"}>イートインスペース</text>
                     {has && wait != null && <text x={FROG_PLAZA.x + FROG_PLAZA.w - 15} y={fcy + 1.1} textAnchor="middle" fontSize="2.7" fontWeight="900" fill="#e6206b">{wait}分</text>}
                     <text x={FROG_PLAZA.x + FROG_PLAZA.w - 5} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">🗑️</text>
                   </g>
@@ -212,8 +215,8 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                     const labelX = (blk.entrance ? blk.entrance.x : blk.x) - 2;
                     let cursorX = blk.x;
                     return (
-                      <g key={fl.f}>
-                        <text x={labelX} y={fy + blk.floorH / 2 + 1.1} textAnchor="end" fontSize="2.9" fontWeight="800" fill="#9b968e">{fl.f}</text>
+                      <g key={fi}>
+                        {fl.f && <text x={labelX} y={fy + blk.floorH / 2 + 1.1} textAnchor="end" fontSize="2.9" fontWeight="800" fill="#9b968e">{fl.f}</text>}
                         {fl.rooms.map((rm, ri) => {
                           const rx = cursorX; cursorX += rm.w;
                           const matched = (rm.n && !rm.off) ? boothsForRoom(booths, rm.n) : [];
@@ -224,7 +227,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                           return (
                             <g key={ri} style={{ cursor: has ? "pointer" : "default" }}
                               onClick={() => { if (has && bt) onJump(bt.id); }}>
-                              {rm.n ? <title>{rm.n}</title> : null}
+                              {rm.n ? <title>{rm.vend ? `${rm.n}(室内に自販機あり)` : rm.n}</title> : null}
                               {has && <rect x={rx - 0.5} y={fy - 0.5} width={rm.w + 1} height={blk.floorH + 1} rx="1.4" fill="#ffb157" opacity="0.22" />}
                               <rect x={rx} y={fy} width={rm.w} height={blk.floorH} rx="0.8"
                                 fill={rm.off ? "#eceae6" : has ? "#fff3e0" : rm.n ? "#ffffff" : "#fbfaf8"}
@@ -243,6 +246,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                                   : <text x={rx + rm.w / 2} y={fy + blk.floorH - 1.2} textAnchor="middle" fontSize="2.5" fontWeight="900" fill="#e6206b">{bt.isOpen ? `${bt.waitMinutes}分` : "休"}</text>
                               )}
                               {isFood && <text x={rx + rm.w - 2.2} y={fy + 3} textAnchor="middle" fontSize="2.7">🍴</text>}
+                              {rm.vend && <text x={rx + (isFood ? rm.w - 7.7 : rm.w - 3.2)} y={fy + 3} textAnchor="middle" fontSize="2.7">🥤</text>}
                             </g>
                           );
                         })}
@@ -254,8 +258,8 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
 
               {VENDING_SPOTS.map((v, i) => (
                 <g key={i}>
-                  <circle cx={v.x} cy={v.y} r="3.6" fill="#fff" stroke="#e2dcd2" strokeWidth="0.45" />
-                  <text x={v.x} y={v.y + 1.5} textAnchor="middle" fontSize="4">🥤</text>
+                  <circle cx={v.x} cy={v.y} r="3.2" fill="#fff" stroke="#e2dcd2" strokeWidth="0.45" />
+                  <text x={v.x} y={v.y + 1.3} textAnchor="middle" fontSize="3.6">🥤</text>
                 </g>
               ))}
             </svg>
