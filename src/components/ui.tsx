@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info, Minus, Plus, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -84,14 +84,46 @@ export const WaitChart = ({ history, color }: { history: Booth["history"]; color
 
 /* 汎用ボトムシート(Escキーでも閉じられる) */
 export const Sheet = ({ onClose, title, children }: { onClose: () => void; title: string; children: ReactNode }) => {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const titleId = useId();
   useEffect(() => {
     const orig = document.body.style.overflow;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = "hidden";
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const focusableSelector = "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+    const focusFirst = window.requestAnimationFrame(() => {
+      dialogRef.current?.querySelector<HTMLElement>(focusableSelector)?.focus();
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => {
+      window.cancelAnimationFrame(focusFirst);
       document.body.style.overflow = orig;
       window.removeEventListener("keydown", onKey);
+      previousFocus?.focus();
     };
   }, [onClose]);
   return (
@@ -99,9 +131,11 @@ export const Sheet = ({ onClose, title, children }: { onClose: () => void; title
       <div
         className="w-full max-w-xl mx-auto bg-stone-50 rounded-t-3xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-labelledby={titleId}
+        tabIndex={-1}
         style={{
           maxHeight: "calc(100dvh - max(env(safe-area-inset-top), 24px))",
           animation: "slideUp 0.25s cubic-bezier(0.16,1,0.3,1)",
@@ -109,7 +143,7 @@ export const Sheet = ({ onClose, title, children }: { onClose: () => void; title
       >
         <div className="flex-shrink-0 bg-stone-50 border-b border-stone-200 px-5 pt-4 pb-3 flex items-center gap-3 rounded-t-3xl relative">
           <div className="w-10 h-1 bg-stone-300 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
-          <div className="flex-1 font-bold text-stone-900 mt-1">{title}</div>
+          <div id={titleId} className="flex-1 font-bold text-stone-900 mt-1">{title}</div>
           <IconButton icon={X} onClick={onClose} label="閉じる" variant="soft" size="sm" />
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain">

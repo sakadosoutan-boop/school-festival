@@ -22,11 +22,7 @@ export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { boot
   const accent = accentFor(booth.id);
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => onTap(booth)}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onTap(booth); }}
+    <article
       className="group relative w-full text-left rounded-[26px] p-5 transition-all active:scale-[0.98] hover:-translate-y-1 cursor-pointer overflow-hidden anim-pop"
       style={{
         background: "#ffffff",
@@ -34,18 +30,26 @@ export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { boot
         border: `2px solid ${accent}33`,
       }}
     >
+      <button
+        type="button"
+        onClick={() => onTap(booth)}
+        aria-label={`${booth.name}の詳細を見る`}
+        className="absolute inset-0 z-0 rounded-[24px] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pink-500/50 focus-visible:ring-inset"
+      />
       <div className="absolute -top-8 -right-8 w-24 h-24 rounded-full opacity-15 pointer-events-none anim-floaty2"
         style={{ background: accent }} />
 
       <button
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite(booth.id); }}
+        type="button"
+        onClick={() => onToggleFavorite(booth.id)}
         className={`absolute top-3.5 right-3.5 z-10 w-9 h-9 rounded-full flex items-center justify-center bg-white/70 backdrop-blur hover:scale-110 transition-transform ${isFavorite ? "anim-bobble" : ""}`}
-        aria-label="お気に入り"
+        aria-label={`${booth.name}を${isFavorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+        aria-pressed={isFavorite}
       >
         <Heart size={17} fill={isFavorite ? "#ff4d8d" : "none"} stroke={isFavorite ? "#ff4d8d" : "#c4b5cf"} strokeWidth={2.4} />
       </button>
 
-      <div className="flex items-start gap-4 relative">
+      <div className="flex items-start gap-4 relative z-[1] pointer-events-none">
         <div className="flex-shrink-0 w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm overflow-hidden"
           style={{ background: `linear-gradient(135deg, ${accent}22, ${accent}0f)`, border: `2px solid ${accent}33` }}>
           <BoothIcon booth={booth} size={64} rounded={14} emojiClass="text-4xl" />
@@ -61,7 +65,7 @@ export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { boot
         </div>
       </div>
 
-      <div className="mt-4 flex items-end justify-between relative">
+      <div className="mt-4 flex items-end justify-between relative z-[1] pointer-events-none">
         <div>
           {showNumber ? (
             <div className="flex items-baseline gap-1.5">
@@ -84,7 +88,7 @@ export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { boot
         </div>
         {showNumber && <div className="w-24 h-8"><Sparkline history={booth.history} color={status.color} /></div>}
       </div>
-    </div>
+    </article>
   );
 };
 
@@ -241,7 +245,7 @@ export const HelpSheet = ({ onClose }: { onClose: () => void }) => {
     { q: "待ち時間が0分なのに行列がある", a: "そのブースの担当者が人数を入力していません。スタッフモードから列の人数を入力してください。" },
     { q: "情報が古いと表示される", a: `${STALE_MINUTES}分以上更新がないと「更新待ち」、${VERY_STALE_MINUTES}分以上で数字が隠れます。担当者がアプリを開いて操作すれば自動で新しくなります。` },
     { q: "「ご案内しました」を押し間違えた", a: "1分以内なら、ボタンのすぐ下に「取り消す」が出ます。それを押せば元に戻ります。" },
-    { q: "2人で同じブースを操作したい", a: "できますが、後から操作した内容が優先されます。混乱を防ぐため1ブース1端末を推奨します。" },
+    { q: "2人で同じブースを操作したい", a: "同時更新による上書きは防止され、競合時は最新情報の再読込を案内します。混乱を防ぐため、通常は1ブース1端末を推奨します。" },
     { q: "電波が悪くて更新できない", a: "更新は端末に保留され、電波が戻ると自動で送信されます。画面上部にオフライン表示が出ている間は、紙やホワイトボードの掲示も併用してください。" },
     { q: "データが消えないか心配", a: "各ブースは別々に保存されるので、他のブースの操作で消えることはありません。設定画面からバックアップ(書き出し)ができ、管理者はサーバー側のスナップショットからワンタップで復元できます。" },
     { q: "ホーム画面に追加するには", a: "iPhone(Safari)は共有ボタン→「ホーム画面に追加」。Android(Chrome)はメニュー→「ホーム画面に追加」。" },
