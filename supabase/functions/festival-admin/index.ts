@@ -30,7 +30,12 @@ const PUBLISHABLE_KEYS = new Set([
   Deno.env.get("SUPABASE_ANON_KEY") ?? "",
 ].filter(Boolean));
 // カンマ区切りで複数オリジンを許可(本番 + ローカル検証など)。
-const ALLOWED_ORIGINS = (Deno.env.get("ALLOWED_ORIGIN") ?? "*").split(",").map((value) => value.trim()).filter(Boolean);
+const DEFAULT_ALLOWED_ORIGIN = "https://sakadosoutan-boop.github.io";
+const ALLOWED_ORIGINS = new Set((Deno.env.get("ALLOWED_ORIGIN") ?? DEFAULT_ALLOWED_ORIGIN)
+  .split(",").map((value) => value.trim()).filter(Boolean));
+if (ALLOWED_ORIGINS.has("*")) {
+  throw new Error("ALLOWED_ORIGIN must list explicit origins; wildcard CORS is not permitted.");
+}
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   throw new Error("Supabase admin credentials are not available to the Edge Function.");
@@ -49,19 +54,19 @@ const MAX_WAIT_MINUTES = 600;
 const MAX_BOOTHS = 300;
 const MAX_DOC_CHARS = 160_000;
 const SNAPSHOT_KEEP = 30;
-const GLOBAL_LIMIT_ID = "global";
+
+function isAllowedOrigin(origin: string | null): boolean {
+  // OriginなしはCLI・サーバー間通信。ブラウザ由来のOriginだけを厳密に検査する。
+  return origin === null || ALLOWED_ORIGINS.has(origin);
+}
 
 function corsHeadersFor(origin: string | null): Record<string, string> {
-  const allowAny = ALLOWED_ORIGINS.includes("*");
-  const allowOrigin = allowAny
-    ? "*"
-    : origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0] ?? "*";
   return {
-    "access-control-allow-origin": allowOrigin,
     "access-control-allow-headers": "authorization, x-client-info, apikey, content-type",
     "access-control-allow-methods": "POST, OPTIONS",
     "access-control-max-age": "86400",
-    ...(allowAny ? {} : { vary: "origin" }),
+    ...(origin && ALLOWED_ORIGINS.has(origin) ? { "access-control-allow-origin": origin } : {}),
+    "vary": "origin",
     "cache-control": "no-store",
     "content-type": "application/json; charset=utf-8",
     "x-content-type-options": "nosniff",
@@ -83,56 +88,34 @@ function callerFingerprint(request: Request): Promise<string> {
   return sha256(`${ip}|${agent.slice(0, 160)}`);
 }
 
-/* ── PIN総当たり対策: 端末別 + 全体の二段レート制限 ── */
+/* ── PIN総当たり対策: 呼出元別。公開キーだけで全員を止められる全体ロックは置かない。 ── */
 
 async function rateLimitState(identifier: string): Promise<{ blocked: boolean; retryAfterSeconds: number }> {
   const { data, error } = await supabase
     .from("staff_pin_attempts")
-    .select("identifier,blocked_until")
-    .in("identifier", [identifier, GLOBAL_LIMIT_ID]);
-  if (error) throw error;
-  let retry = 0;
-  for (const row of data ?? []) {
-    if (!row.blocked_until) continue;
-    retry = Math.max(retry, Math.ceil((Date.parse(row.blocked_until) - Date.now()) / 1000));
-  }
-  return retry > 0 ? { blocked: true, retryAfterSeconds: retry } : { blocked: false, retryAfterSeconds: 0 };
-}
-
-async function bumpFailure(identifier: string, maxAttempts: number, blockMinutes: number): Promise<void> {
-  const now = Date.now();
-  const { data, error } = await supabase
-    .from("staff_pin_attempts")
-    .select("window_started,attempts")
+    .select("blocked_until")
     .eq("identifier", identifier)
     .maybeSingle();
   if (error) throw error;
-
-  const windowStart = data?.window_started ? Date.parse(data.window_started) : 0;
-  const withinWindow = now - windowStart < 10 * 60_000;
-  const attempts = withinWindow ? Number(data?.attempts ?? 0) + 1 : 1;
-  const blockedUntil = attempts >= maxAttempts ? new Date(now + blockMinutes * 60_000).toISOString() : null;
-
-  const { error: upsertError } = await supabase.from("staff_pin_attempts").upsert({
-    identifier,
-    window_started: withinWindow && data?.window_started ? data.window_started : new Date(now).toISOString(),
-    attempts,
-    blocked_until: blockedUntil,
-    updated_at: new Date(now).toISOString(),
-  });
-  if (upsertError) throw upsertError;
+  const retry = data?.blocked_until
+    ? Math.max(0, Math.ceil((Date.parse(data.blocked_until) - Date.now()) / 1000))
+    : 0;
+  return retry > 0 ? { blocked: true, retryAfterSeconds: retry } : { blocked: false, retryAfterSeconds: 0 };
 }
 
 async function recordFailedPin(identifier: string): Promise<void> {
-  await bumpFailure(identifier, 8, 15);
-  await bumpFailure(GLOBAL_LIMIT_ID, 40, 10);
+  const { error } = await supabase.rpc("record_pin_failure", {
+    p_identifier: identifier,
+    p_max_attempts: 8,
+    p_block_minutes: 15,
+  });
+  if (error) throw error;
 }
 
 async function clearFailedPins(identifier: string): Promise<void> {
   const { error } = await supabase.from("staff_pin_attempts").delete().eq("identifier", identifier);
   if (error) throw error;
   await supabase.from("staff_pin_attempts").delete()
-    .neq("identifier", GLOBAL_LIMIT_ID)
     .lt("updated_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString());
 }
 
@@ -319,19 +302,40 @@ async function getPublicData(version?: string) {
   };
 }
 
-async function upsertBoothDoc(doc: Record<string, unknown>): Promise<Record<string, unknown>> {
+type WriteResult = { stored: Record<string, unknown> } | { conflict: Record<string, unknown> | null };
+
+async function upsertBoothDoc(doc: Record<string, unknown>): Promise<WriteResult> {
   const id = doc.id as string;
-  const { data: existing } = await supabase.from("booth_docs").select("rev").eq("id", id).maybeSingle();
-  const nextRev = Math.max(Number(existing?.rev ?? 0) + 1, Number(doc.rev ?? 0));
-  const stored = { ...doc, rev: nextRev };
-  const { error } = await supabase.from("booth_docs").upsert({
-    id,
-    doc: stored,
-    rev: nextRev,
-    updated_at: new Date().toISOString(),
+  const nextRev = int(doc.rev, 0, 0, Number.MAX_SAFE_INTEGER);
+  const { data, error } = await supabase.rpc("upsert_booth_doc_if_rev", {
+    p_id: id,
+    p_doc: doc,
+    p_next_rev: nextRev,
   });
   if (error) throw error;
-  return stored;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return { stored: data as Record<string, unknown> };
+  }
+  const { data: current, error: currentError } = await supabase
+    .from("booth_docs").select("doc").eq("id", id).maybeSingle();
+  if (currentError) throw currentError;
+  return { conflict: current?.doc as Record<string, unknown> | null ?? null };
+}
+
+async function upsertStageDoc(doc: Record<string, unknown>): Promise<WriteResult> {
+  const nextRev = int(doc.rev, 0, 0, Number.MAX_SAFE_INTEGER);
+  const { data, error } = await supabase.rpc("upsert_stage_doc_if_rev", {
+    p_doc: doc,
+    p_next_rev: nextRev,
+  });
+  if (error) throw error;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    return { stored: data as Record<string, unknown> };
+  }
+  const { data: current, error: currentError } = await supabase
+    .from("stage_docs").select("doc").eq("id", true).maybeSingle();
+  if (currentError) throw currentError;
+  return { conflict: current?.doc as Record<string, unknown> | null ?? null };
 }
 
 async function storeSnapshot(label: string): Promise<{ id: number; createdAt: string; label: string; boothCount: number; eventCount: number }> {
@@ -367,23 +371,20 @@ async function storeSnapshot(label: string): Promise<{ id: number; createdAt: st
 }
 
 async function replaceAllDocs(booths: Record<string, unknown>[], stage: Record<string, unknown> | null): Promise<void> {
-  const { error: delError } = await supabase.from("booth_docs").delete().neq("id", "");
-  if (delError) throw delError;
-  if (booths.length > 0) {
-    const now = new Date().toISOString();
-    const rows = booths.map((doc) => ({ id: doc.id as string, doc, rev: Number(doc.rev ?? 1) || 1, updated_at: now }));
-    const { error } = await supabase.from("booth_docs").insert(rows);
-    if (error) throw error;
-  }
-  if (stage) {
-    const { error } = await supabase.from("stage_docs").upsert({ id: true, doc: stage, rev: Number(stage.rev ?? 1) || 1, updated_at: new Date().toISOString() });
-    if (error) throw error;
-  }
+  const { error } = await supabase.rpc("replace_festival_docs", {
+    p_booths: booths,
+    p_stage: stage,
+  });
+  if (error) throw error;
 }
 
 Deno.serve(async (request) => {
-  const cors = corsHeadersFor(request.headers.get("origin"));
+  const origin = request.headers.get("origin");
+  const cors = corsHeadersFor(origin);
   const respond = (body: unknown, status = 200): Response => new Response(JSON.stringify(body), { status, headers: cors });
+  if (!isAllowedOrigin(origin)) {
+    return respond({ ok: false, error: "このオリジンからは利用できません。", code: "ORIGIN_NOT_ALLOWED" }, 403);
+  }
 
   if (request.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (request.method !== "POST") return respond({ ok: false, error: "POST only" }, 405);
@@ -439,7 +440,11 @@ Deno.serve(async (request) => {
         return respond({ ok: false, error: `ブース数の上限(${MAX_BOOTHS})に達しています。`, code: "TOO_MANY_BOOTHS" }, 400);
       }
 
-      const stored = await upsertBoothDoc(sanitized.value);
+      const write = await upsertBoothDoc(sanitized.value);
+      if ("conflict" in write) {
+        return respond({ ok: false, error: "別の端末で先に更新されました。最新情報を読み込んでから、もう一度操作してください。", code: "CONFLICT", current: write.conflict }, 409);
+      }
+      const stored = write.stored;
       await audit("save_booth", String(sanitized.value.id), identifier, {
         people: sanitized.value.peopleInLine,
         isOpen: sanitized.value.isOpen,
@@ -465,11 +470,11 @@ Deno.serve(async (request) => {
       const sanitized = sanitizeStage(stage);
       if (!sanitized.ok) return respond({ ok: false, error: `ステージデータが不正です：${sanitized.reason}`, code: "INVALID_PAYLOAD" }, 400);
 
-      const { data: existing } = await supabase.from("stage_docs").select("rev").eq("id", true).maybeSingle();
-      const nextRev = Math.max(Number(existing?.rev ?? 0) + 1, Number(sanitized.value.rev ?? 0));
-      const stored = { ...sanitized.value, rev: nextRev };
-      const { error } = await supabase.from("stage_docs").upsert({ id: true, doc: stored, rev: nextRev, updated_at: new Date().toISOString() });
-      if (error) throw error;
+      const write = await upsertStageDoc(sanitized.value);
+      if ("conflict" in write) {
+        return respond({ ok: false, error: "別の端末で先にステージを更新されました。最新情報を読み込んでから、もう一度保存してください。", code: "CONFLICT", current: write.conflict }, 409);
+      }
+      const stored = write.stored;
       await audit("save_stage", "stage", identifier, { items: (stored.items as unknown[]).length });
       return respond({ ok: true, data: stored });
     }

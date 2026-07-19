@@ -5,7 +5,8 @@ import type { ApiResult, Booth, FestivalData, FestivalSettings, SnapshotMeta, St
  * v4プロトタイプの `window.storage`(Claude環境専用)を置き換えるデータ層。
  *  - 共有API(Supabase Edge Function)が設定されていれば全端末で同期する。
  *  - 未設定ならデモモードとして、この端末のlocalStorageだけで完結する。
- * 書き込みはブース単位のLWW(後勝ち)。「1ブース1端末」を前提とするv4の設計を踏襲し、
+ * 書き込みはブース単位のrevで競合を検出し、古い端末からの上書きを拒否する。
+ * 安定運用のため「1ブース1端末」を基本とし、
  * 通信断のときは端末に保留して復帰時に再送する。
  */
 
