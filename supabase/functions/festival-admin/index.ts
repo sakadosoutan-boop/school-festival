@@ -592,6 +592,17 @@ Deno.serve(async (request) => {
     return respond({ ok: false, error: "未対応の操作です。", code: "UNKNOWN_ACTION" }, 400);
   } catch (error) {
     console.error(error);
+    // マイグレーション未実行のままFunctionだけ更新すると、RPCが見つからず全書込が失敗する。
+    // 画面のエラーにそのまま直し方が出るようにする(PGRST202 = 関数がスキーマに無い)。
+    const pgCode = (error as { code?: string } | null)?.code;
+    const message = String((error as { message?: string } | null)?.message ?? "");
+    if (pgCode === "PGRST202" || message.includes("schema cache")) {
+      return respond({
+        ok: false,
+        error: "データベースが未更新です。Supabase SQL Editorで supabase/migrations/004_operational_hardening.sql を実行してください。",
+        code: "DB_MIGRATION_REQUIRED",
+      }, 500);
+    }
     return respond({ ok: false, error: "サーバー処理に失敗しました。運営本部に連絡してください。", code: "SERVER_ERROR" }, 500);
   }
 });

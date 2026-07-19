@@ -263,7 +263,7 @@ function AppInner(): React.JSX.Element {
 
   /* ── ブース書込: ローカル即時反映 + リモートへ送信(通信断は自動保留) ── */
   const queueToastAt = useRef(0);
-  const persistBooth = useCallback((next: Booth) => {
+  const persistBooth = useCallback((next: Booth, rollback?: Booth) => {
     void saveBooth(staffPin, next).then((result) => {
       setPendingCount(pendingWrites().length);
       if (result.queued && Date.now() - queueToastAt.current > 8_000) {
@@ -277,7 +277,12 @@ function AppInner(): React.JSX.Element {
         }
         showToast("別の端末で先に更新されました。最新の値を表示しています", "warn");
       } else if (!result.ok && result.code !== "NETWORK") {
-        showToast(result.error ?? "更新を送信できませんでした", "error");
+        // 保存に失敗したのに画面だけ変わったままだと「押したのに反映されない」
+        // 事故になる。元の値へ戻して、失敗を確実に見せる。
+        if (rollback) {
+          setBooths((prev) => prev.map((b) => (b.id === rollback.id ? rollback : b)));
+        }
+        showToast(`保存できませんでした：${result.error ?? "サーバーエラー"}`, "error");
       }
     });
   }, [showToast, staffPin]);
@@ -290,7 +295,7 @@ function AppInner(): React.JSX.Element {
       const record = nextWait !== cur.waitMinutes || updates.isOpen !== undefined;
       const history = record ? [...(cur.history || []), { ts: Date.now(), wait: nextWait }].slice(-30) : cur.history;
       const next: Booth = { ...cur, ...updates, history, lastUpdated: Date.now(), rev: (cur.rev || 0) + 1 };
-      persistBooth(next);
+      persistBooth(next, cur);
       return prev.map((b) => b.id === id ? next : b);
     });
   }, [persistBooth]);
