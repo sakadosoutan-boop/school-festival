@@ -441,6 +441,15 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
           </div>
         )}
 
+        {!booth.isOpen && (
+          <button onClick={() => onUpdate({ isOpen: true })}
+            className="w-full mb-4 py-4 rounded-2xl text-white active:scale-[0.98] transition-transform shadow-lg"
+            style={{ background: "linear-gradient(135deg,#10b981,#059669)" }}>
+            <span className="font-black text-base">🟢 開店する（営業中にする）</span>
+            <span className="block text-xs font-bold text-white/90 mt-0.5">お客さんの画面に待ち時間が表示されるようになります</span>
+          </button>
+        )}
+
         <div className="rounded-3xl p-6 mb-4 relative overflow-hidden" style={{ backgroundColor: status.soft, border: `1px solid ${status.ring}` }}>
           <div className="flex items-center justify-between mb-2">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-full border bg-white" style={{ color: status.color, borderColor: status.ring }}><Sparkles size={11} /> 現在の表示</span>
@@ -638,7 +647,7 @@ export const CalculatorSheet = ({ booth, onClose, onApply }: { booth: Booth; onC
 
 /* ═══════════ SETTINGS ═══════════ */
 
-export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, showToast }: {
+export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, showToast }: {
   role: StaffRole;
   booths: Booth[];
   emergencyNotice: string;
@@ -651,10 +660,12 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
   onResetSeed: () => void;
   onSaveSnapshot: () => void;
   onOpenSnapshots: () => void;
+  onBulkOpen: (open: boolean) => void;
   showToast: (message: string, type?: "success" | "error" | "info" | "warn") => void;
 }) => {
   const [staffPin, setStaffPin] = useState("");
   const [adminPin, setAdminPin] = useState("");
+  const [confirmBulk, setConfirmBulk] = useState<boolean | null>(null);
   const [notice, setNotice] = useState(emergencyNotice);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const isAdmin = role === "admin";
@@ -687,6 +698,20 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
             <div className="text-[11px] text-stone-400 text-right mt-1">{notice.length}/180</div>
             <button onClick={() => onSaveEmergency(notice.trim())} disabled={busy || notice.trim() === emergencyNotice}
               className="w-full mt-2 py-3 rounded-xl bg-stone-900 text-white font-bold text-sm active:scale-95 disabled:opacity-40">{notice.trim() ? "お知らせを公開" : "お知らせを解除"}</button>
+          </div>
+        )}
+
+        {/* 一斉開店・閉店(管理者) */}
+        {isAdmin && (
+          <div className="bg-white rounded-2xl p-5 border border-stone-200">
+            <div className="flex items-center gap-2 mb-3"><Zap size={16} className="text-stone-700" strokeWidth={2.2} /><div className="font-bold text-stone-900">一斉開店・一斉閉店</div></div>
+            <p className="text-xs text-stone-500 mb-3 leading-relaxed">開会・閉会のタイミングで、全ブース({booths.length}件)の営業状態をまとめて切り替えます。各ブースの人数・在庫・設定は変わりません。</p>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => setConfirmBulk(true)} disabled={busy}
+                className="py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm active:scale-95 disabled:opacity-40">🟢 一斉開店</button>
+              <button onClick={() => setConfirmBulk(false)} disabled={busy}
+                className="py-3 rounded-xl border border-stone-200 bg-white text-stone-700 font-bold text-sm active:scale-95 disabled:opacity-40">🔴 一斉閉店</button>
+            </div>
           </div>
         )}
 
@@ -760,8 +785,20 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
           <p className="text-xs text-indigo-900 leading-relaxed">iPhone(Safari): 共有ボタン → ホーム画面に追加<br />Android(Chrome): メニュー → ホーム画面に追加</p>
         </div>
 
-        <div className="text-center text-[11px] text-stone-400">{APP_NAME} v6 · {backendConfigured ? "同期: 共有APIに接続" : "同期: デモ(この端末のみ)"}</div>
+        <div className="text-center text-[11px] text-stone-400">{APP_NAME} v6 · {backendConfigured ? "同期: 共有APIに接続" : "同期: デモ(この端末のみ)"} · ビルド {__BUILD_ID__}</div>
       </div>
+      {confirmBulk !== null && (
+        <Confirm
+          title={confirmBulk ? "全ブースを営業中にしますか?" : "全ブースを準備中にしますか?"}
+          message={confirmBulk
+            ? "来場者の画面に全ブースの待ち時間が表示されるようになります。"
+            : "来場者の画面では全ブースが「準備中」の表示になります。"}
+          confirmLabel={confirmBulk ? "一斉開店" : "一斉閉店"}
+          danger={!confirmBulk}
+          onConfirm={() => { onBulkOpen(confirmBulk); setConfirmBulk(null); }}
+          onCancel={() => setConfirmBulk(null)}
+        />
+      )}
     </Sheet>
   );
 };
