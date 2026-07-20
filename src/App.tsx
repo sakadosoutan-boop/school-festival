@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, HelpCircle, Map as MapIcon, Megaphone, Music, RefreshCw, ShieldCheck, Star, WifiOff } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, HelpCircle, Map as MapIcon, Megaphone, Music, RefreshCw, ShieldCheck, Star, WifiOff } from "lucide-react";
 import {
-  avgCycle, calcWait, CATEGORIES, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS, sanitizeStage, seedBooths, seedStage,
-  STALE_MINUTES, THEME, VOTE_FORM_URL,
+  allSoldOut, avgCycle, calcWait, CATEGORIES, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS, sanitizeStage,
+  seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME, todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
   apiConfigError, backendConfigured, cachedData, changePin, createSnapshot, deleteBooth as apiDeleteBooth, fetchAll,
@@ -53,6 +53,8 @@ function AppInner(): React.JSX.Element {
   const categoryPan = useDragScroll<HTMLDivElement>();
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState("default");
+  // ワンタップ絞り込み: 営業中のみ / すぐ入れる(5分以内・完売以外)
+  const [quickFilter, setQuickFilter] = useState<"none" | "open" | "quick">("none");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -497,6 +499,8 @@ function AppInner(): React.JSX.Element {
   const filtered = useMemo(() => {
     let list = booths;
     if (category !== "all") list = list.filter((b) => b.category === category);
+    if (quickFilter === "open") list = list.filter((b) => b.isOpen);
+    else if (quickFilter === "quick") list = list.filter((b) => b.isOpen && b.waitMinutes <= 5 && !allSoldOut(b));
     const normalized = normalizeForSearch(query);
     if (normalized) {
       list = list.filter((b) => [b.name, b.orgName, b.organizer, b.room, b.description, `${b.grade}年${b.classNum}組`]
@@ -506,7 +510,16 @@ function AppInner(): React.JSX.Element {
     else if (sortBy === "wait_desc") list = [...list].sort((a, b) => b.waitMinutes - a.waitMinutes);
     else if (sortBy === "favorites") list = list.filter((b) => favorites.includes(b.id));
     return list;
-  }, [booths, category, favorites, query, sortBy]);
+  }, [booths, category, favorites, query, quickFilter, sortBy]);
+
+  // 開催当日のホームに出すステージのNOW/NEXT(開催日以外は非表示)
+  const festivalDay = todayFestivalDay();
+  const stageNow = useMemo(() => {
+    if (!festivalDay || !stage || (stage.items || []).length === 0) return null;
+    const { live, next } = stageNowNext(stage.items.filter((i) => (i.day || 1) === festivalDay));
+    return live || next ? { live, next } : null;
+    // tickで20秒ごとに再判定する
+  }, [festivalDay, stage, tick]);
 
   const openBooths = booths.filter((b) => b.isOpen);
   const avgWait = openBooths.length === 0 ? 0 : Math.round(openBooths.reduce((s, b) => s + b.waitMinutes, 0) / openBooths.length);
@@ -580,7 +593,16 @@ function AppInner(): React.JSX.Element {
               </div>
             </div>
             <div className="relative max-w-xl mx-auto px-4 pb-3.5">
-              <div {...categoryPan} className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
+              {/* PC向け: ドラッグに気づかなくても押せる左右ボタン */}
+              <button onClick={() => categoryPan.ref.current?.scrollBy({ left: -220, behavior: "smooth" })} aria-label="カテゴリを左へ"
+                className="hidden md:flex absolute left-0.5 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/90 shadow-md items-center justify-center text-stone-600 active:scale-95">
+                <ChevronLeft size={16} strokeWidth={3} />
+              </button>
+              <button onClick={() => categoryPan.ref.current?.scrollBy({ left: 220, behavior: "smooth" })} aria-label="カテゴリを右へ"
+                className="hidden md:flex absolute right-0.5 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/90 shadow-md items-center justify-center text-stone-600 active:scale-95">
+                <ChevronRight size={16} strokeWidth={3} />
+              </button>
+              <div {...categoryPan} className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:mx-6 cursor-grab active:cursor-grabbing select-none">
                 {CATEGORIES.map((c) => (
                   <button key={c.id} onClick={() => setCategory(c.id)}
                     className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${category === c.id ? "bg-white shadow-md" : "bg-white/25 text-white backdrop-blur hover:bg-white/40"}`}
@@ -620,6 +642,32 @@ function AppInner(): React.JSX.Element {
               </a>
             )}
 
+            {stageNow && (
+              <button onClick={() => setView("stage")}
+                className="w-full mb-4 rounded-2xl p-4 text-left relative overflow-hidden active:scale-[0.98] transition-transform shadow-md"
+                style={{ background: "linear-gradient(120deg,#9b5de5,#4cc9f0)" }}>
+                <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle,#fff 1.5px,transparent 1.5px)", backgroundSize: "16px 16px" }} />
+                <div className="relative flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-white/25 backdrop-blur flex items-center justify-center flex-shrink-0 text-xl">🎤</div>
+                  <div className="flex-1 min-w-0">
+                    {stageNow.live ? (
+                      <>
+                        <div className="text-white/90 text-[11px] font-black flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> ステージ上演中</div>
+                        <div className="text-white font-black text-base leading-tight truncate">{stageNow.live.title}</div>
+                        <div className="text-white/90 text-xs font-bold mt-0.5">〜{stageNow.live.end} · タップでタイムテーブルへ →</div>
+                      </>
+                    ) : stageNow.next ? (
+                      <>
+                        <div className="text-white/90 text-[11px] font-black">🎬 まもなくステージ開演</div>
+                        <div className="text-white font-black text-base leading-tight truncate">{stageNow.next.title}</div>
+                        <div className="text-white/90 text-xs font-bold mt-0.5">{stageNow.next.start} 開演 · タップでタイムテーブルへ →</div>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            )}
+
             <div className="mb-3">
               <input
                 value={query}
@@ -628,6 +676,19 @@ function AppInner(): React.JSX.Element {
                 className="w-full px-4 py-3 rounded-2xl border-2 bg-white text-sm font-bold outline-none"
                 style={{ borderColor: `${THEME.purple}33`, color: THEME.ink }}
               />
+            </div>
+
+            <div className="flex gap-1.5 mb-2">
+              <button onClick={() => setQuickFilter((f) => f === "open" ? "none" : "open")}
+                className={`px-3 py-1.5 rounded-full text-xs font-extrabold border-2 transition-all active:scale-95 ${quickFilter === "open" ? "text-white shadow-md" : "bg-white text-stone-600"}`}
+                style={quickFilter === "open" ? { background: "#10b981", borderColor: "#10b981" } : { borderColor: "#10b98155" }}>
+                🟢 営業中のみ
+              </button>
+              <button onClick={() => setQuickFilter((f) => f === "quick" ? "none" : "quick")}
+                className={`px-3 py-1.5 rounded-full text-xs font-extrabold border-2 transition-all active:scale-95 ${quickFilter === "quick" ? "text-white shadow-md" : "bg-white text-stone-600"}`}
+                style={quickFilter === "quick" ? { background: THEME.orange, borderColor: THEME.orange } : { borderColor: `${THEME.orange}55` }}>
+                ⚡ すぐ入れる(5分以内)
+              </button>
             </div>
 
             <div className="flex items-center justify-between mb-3">
@@ -643,7 +704,7 @@ function AppInner(): React.JSX.Element {
               {filtered.map((b) => <BoothCard key={b.id} booth={b} onTap={(x) => setSelectedId(x.id)} isFavorite={favorites.includes(b.id)} onToggleFavorite={toggleFavorite} />)}
             </div>
             {filtered.length === 0 && (
-              <EmptyState icon={booths.length === 0 ? "🎪" : "🔍"} title={booths.length === 0 ? "まだブースがありません" : "該当する店舗がありません"} message={booths.length === 0 ? "スタッフタブから追加してください" : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます" : "検索語やカテゴリを変えてお試しください"} />
+              <EmptyState icon={booths.length === 0 ? "🎪" : "🔍"} title={booths.length === 0 ? "まだブースがありません" : "該当する店舗がありません"} message={booths.length === 0 ? "スタッフタブから追加してください" : quickFilter !== "none" ? "「営業中のみ」「すぐ入れる」の絞り込みを外すと全ブースが表示されます" : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます" : "検索語やカテゴリを変えてお試しください"} />
             )}
             <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · {STALE_MINUTES}分以上更新がないと「情報が古い」と表示されます</div>
           </main>

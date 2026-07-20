@@ -10,6 +10,16 @@ export const STALE_MINUTES = 12;
 export const VERY_STALE_MINUTES = 30;
 export const NAG_MINUTES = 8;
 
+// やなぎ祭の一般公開日(JST)。1日目・2日目の自動判定に使う。
+export const FESTIVAL_DATES = ["2026-08-29", "2026-08-30"] as const;
+
+/** 今日が開催何日目かを返す(開催日以外はnull)。日付はJSTで判定する。 */
+export function todayFestivalDay(now = Date.now()): number | null {
+  const jstDate = new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
+  const idx = (FESTIVAL_DATES as readonly string[]).indexOf(jstDate);
+  return idx === -1 ? null : idx + 1;
+}
+
 // 企画投票用GoogleフォームのURL。空ならバナー自体を表示しない
 // (プレースホルダーの死にリンクを本番に出さないため、環境変数で注入する)。
 export const VOTE_FORM_URL = ((import.meta.env?.VITE_VOTE_FORM_URL as string | undefined) ?? "").trim();

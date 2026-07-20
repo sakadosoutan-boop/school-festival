@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, Clock, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
 import {
-  itemStatus, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, stageNowNext, THEME, toMin,
+  itemStatus, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, stageNowNext, THEME, toMin, todayFestivalDay,
 } from "../lib/festival";
 import type { StageItem, StageProgram } from "../types";
 import { Confirm, EmptyState, Field, Hint, IconButton, Sheet, TimeStepper } from "./ui";
@@ -10,7 +10,8 @@ import { Confirm, EmptyState, Field, Hint, IconButton, Sheet, TimeStepper } from
 
 export const StageView = ({ program, tick }: { program: StageProgram; tick: number }) => {
   const dayCount = program?.days || 1;
-  const [day, setDay] = useState(1);
+  // 開催当日は自動でその日のタブを開く(それ以外は1日目)
+  const [day, setDay] = useState(() => Math.min(todayFestivalDay() ?? 1, program?.days || 1));
   const [mode, setMode] = useState<"grid" | "list">("grid");
   const dayItems = useMemo(
     () => (program ? sortItems(program.items.filter((i) => (i.day || 1) === day)) : []),
@@ -163,6 +164,18 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
   const TIME_COL = 52;
   const accent = THEME.pink;
   const nowLineRef = useRef<HTMLDivElement | null>(null);
+  // ページ全体のスクロールに頼らず、表の中だけで縦スクロールできる独立コンテナ。
+  // 環境や端末設定に左右されず、▲▼ボタンでも確実に動かせる。
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollBy = (dy: number) => scrollRef.current?.scrollBy({ top: dy, behavior: "smooth" });
+
+  // 開いた瞬間に現在時刻の位置まで自動で移動しておく(開催時間外なら何もしない)
+  useEffect(() => {
+    const el = scrollRef.current;
+    const line = nowLineRef.current;
+    if (!el || !line) return;
+    el.scrollTop = Math.max(0, line.offsetTop - el.clientHeight / 2);
+  }, []);
 
   const starts = items.map((i) => toMin(i.start)).filter((v): v is number => v != null);
   const ends = items.map((i) => toMin(i.end)).filter((v): v is number => v != null);
@@ -183,20 +196,28 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <div className="text-xs font-bold" style={{ color: THEME.ink }}>タイムテーブル（{items.length}公演）</div>
-        {nowVisible && (
-          <button onClick={() => nowLineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
-            className="text-[10px] font-black px-2.5 py-1 rounded-full text-white active:scale-95 shadow-sm" style={{ background: accent }}>
-            🕒 現在時刻へ
-          </button>
-        )}
+        <div className="flex items-center gap-1.5">
+          {nowVisible && (
+            <button onClick={() => nowLineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+              className="text-[10px] font-black px-2.5 py-1 rounded-full text-white active:scale-95 shadow-sm" style={{ background: accent }}>
+              🕒 現在時刻へ
+            </button>
+          )}
+          {/* マウス派・スクロールが効かない環境向けの明示ボタン(PCのみ表示) */}
+          <button onClick={() => scrollBy(-260)} aria-label="上へスクロール"
+            className="hidden md:flex w-7 h-7 rounded-full bg-white border border-stone-200 items-center justify-center text-stone-600 font-black active:scale-95 shadow-sm">▲</button>
+          <button onClick={() => scrollBy(260)} aria-label="下へスクロール"
+            className="hidden md:flex w-7 h-7 rounded-full bg-white border border-stone-200 items-center justify-center text-stone-600 font-black active:scale-95 shadow-sm">▼</button>
+        </div>
       </div>
       <div className="rounded-2xl border border-stone-200 bg-white overflow-hidden">
         <div className="flex items-center justify-center text-xs font-black text-white py-2.5" style={{ background: THEME.festGradient }}>
           🎤 ステージ進行表
         </div>
 
+        <div ref={scrollRef} className="overflow-y-auto overscroll-contain" style={{ maxHeight: "min(66vh, 720px)" }}>
         <div className="flex">
           <div className="flex-shrink-0 relative border-r border-stone-200 bg-stone-50/50" style={{ width: TIME_COL, height: totalH }}>
             {ticks.map((t) => (
@@ -250,9 +271,10 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
             })}
           </div>
         </div>
+        </div>
       </div>
       <div className="text-[11px] text-stone-400 mt-2 flex items-center gap-1.5">
-        <span className="w-2.5 h-0.5 rounded-full" style={{ background: accent }} /> ピンクの線が現在時刻 · 上演中の公演が光ります
+        <span className="w-2.5 h-0.5 rounded-full" style={{ background: accent }} /> ピンクの線が現在時刻 · 表の中を上下にスクロールできます
       </div>
     </div>
   );
