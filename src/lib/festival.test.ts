@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   avgCycle, allSoldOut, boothsForRoom, calcWait, formatLocation, isSoldOut, itemStatus, makeBooth,
   makeStageItem, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage, seedBooths, seedStage, sortItems, toMin,
+  todayFestivalDay,
 } from "./festival";
 import type { Booth } from "../types";
 
@@ -139,5 +140,20 @@ describe("やなぎ祭2026 初期データ", () => {
     expect(stage.items.filter((i) => i.day === 1)).toHaveLength(5);
     expect(stage.items.filter((i) => i.day === 2)).toHaveLength(7);
     expect(stage.stageName).toBe("体育館ステージ");
+  });
+});
+
+describe("todayFestivalDay", () => {
+  const jst = (iso: string) => new Date(iso).getTime();
+  it("maps the public days to 1 and 2 in JST", () => {
+    expect(todayFestivalDay(jst("2026-08-29T00:00:00+09:00"))).toBe(1);
+    expect(todayFestivalDay(jst("2026-08-29T23:59:00+09:00"))).toBe(1);
+    expect(todayFestivalDay(jst("2026-08-30T10:30:00+09:00"))).toBe(2);
+  });
+  it("returns null outside the festival and respects the JST boundary", () => {
+    expect(todayFestivalDay(jst("2026-08-28T12:00:00+09:00"))).toBeNull();
+    expect(todayFestivalDay(jst("2026-08-31T00:10:00+09:00"))).toBeNull();
+    // UTCでは28日でも、JSTでは29日 → 1日目
+    expect(todayFestivalDay(jst("2026-08-28T23:30:00+00:00"))).toBe(1);
   });
 });
