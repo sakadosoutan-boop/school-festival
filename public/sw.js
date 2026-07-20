@@ -1,4 +1,4 @@
-const CACHE = "machitime-shell-v7";
+const CACHE = "machitime-shell-v8";
 const CORE = [
   "./",
   "./manifest.webmanifest",
@@ -48,8 +48,14 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
+  // ページ本体(index.html)はHTTPキャッシュも飛ばして常に最新を取りに行く。
+  // 資材はハッシュ付きファイル名なので通常のfetchで安全にキャッシュできる。
+  const request = event.request.mode === "navigate"
+    ? new Request(event.request.url, { cache: "no-store" })
+    : event.request;
+
   event.respondWith(
-    fetch(event.request)
+    fetch(request)
       .then((response) => {
         if (response.ok) {
           const copy = response.clone();

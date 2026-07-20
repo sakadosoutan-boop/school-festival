@@ -1,9 +1,36 @@
 import { useEffect, useId, useRef } from "react";
-import type { ReactNode } from "react";
+import type { PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Info, Minus, Plus, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { freshness, THEME } from "../lib/festival";
 import type { Booth } from "../types";
+
+/* 横スクロール領域をPCのマウスでもドラッグで動かせるようにする。
+   スクロールバーを隠しているため、マウスにはこれ以外の操作手段がない。
+   ドラッグした場合は指を離したときのclickを握りつぶし、中のボタンが誤発火しないようにする。 */
+export function useDragScroll<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const drag = useRef({ startX: 0, startLeft: 0, active: false, moved: false });
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (e.pointerType !== "mouse" || !ref.current) return;
+    drag.current = { startX: e.clientX, startLeft: ref.current.scrollLeft, active: true, moved: false };
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (!drag.current.active || e.pointerType !== "mouse" || !ref.current) return;
+    const dx = e.clientX - drag.current.startX;
+    if (Math.abs(dx) > 4) drag.current.moved = true;
+    ref.current.scrollLeft = drag.current.startLeft - dx;
+  };
+  const endDrag = () => { drag.current.active = false; };
+  const onClickCapture = (e: ReactMouseEvent) => {
+    if (drag.current.moved) {
+      e.preventDefault();
+      e.stopPropagation();
+      drag.current.moved = false;
+    }
+  };
+  return { ref, onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerLeave: endDrag, onClickCapture };
+}
 
 export const Pill = ({ children, color = "#78716c", soft = "#f5f5f4", ring = "#e7e5e4" }: { children: ReactNode; color?: string; soft?: string; ring?: string }) => (
   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 text-xs font-semibold rounded-full border"

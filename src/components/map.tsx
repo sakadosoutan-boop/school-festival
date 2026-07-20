@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { MapPin } from "lucide-react";
 import { allSoldOut, boothsForRoom, BUILDINGS, formatLocation, getStatus, THEME } from "../lib/festival";
 import type { Booth } from "../types";
-import { BoothIcon } from "./ui";
+import { BoothIcon, useDragScroll } from "./ui";
 
 /* ═══════════ MAP VIEW ═══════════
    文化祭マップ(校内図に忠実)。教室を個別セルで表示。viewBox 240x166。
@@ -91,8 +91,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
 
   // PCのマウスでも地図を横に動かせるように、ドラッグでスクロールさせる
   // (ホイールやスクロールバーに気づかない人が多いため)。
-  const panRef = useRef<HTMLDivElement | null>(null);
-  const drag = useRef({ startX: 0, startLeft: 0, active: false });
+  const pan = useDragScroll<HTMLDivElement>();
 
   return (
     <>
@@ -109,20 +108,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
 
       <main className="max-w-xl md:max-w-4xl mx-auto px-4 pt-4">
         <div className="rounded-3xl border-2 border-stone-200 bg-white p-3 mb-3 shadow-sm relative">
-          <div
-            ref={panRef}
-            className="overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing"
-            onPointerDown={(e) => {
-              if (e.pointerType !== "mouse" || !panRef.current) return;
-              drag.current = { startX: e.clientX, startLeft: panRef.current.scrollLeft, active: true };
-            }}
-            onPointerMove={(e) => {
-              if (!drag.current.active || e.pointerType !== "mouse" || !panRef.current) return;
-              panRef.current.scrollLeft = drag.current.startLeft - (e.clientX - drag.current.startX);
-            }}
-            onPointerUp={() => { drag.current.active = false; }}
-            onPointerLeave={() => { drag.current.active = false; }}
-          >
+          <div {...pan} className="overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
             <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} style={{ width: "100%", minWidth: 760, display: "block" }}>
               <rect x="0" y="0" width={MAP_W} height={MAP_H} rx="2.5" fill="#f6f8f4" />
 

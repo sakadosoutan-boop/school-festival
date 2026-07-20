@@ -11,7 +11,7 @@ import {
 } from "./lib/api";
 import { normalizeForSearch } from "./lib/text";
 import type { Booth, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
-import { EmptyState, Spinner, StatCard, TabButton, Toast, Confirm } from "./components/ui";
+import { EmptyState, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll } from "./components/ui";
 import type { ToastType } from "./components/ui";
 import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
 import { InstallAppCard, InstallInstructionsSheet } from "./components/install";
@@ -50,6 +50,7 @@ function AppInner(): React.JSX.Element {
   const [onboarded, setOnboarded] = useState(prefs.onboarded);
 
   const [view, setView] = useState<"home" | "stage" | "map" | "staff">("home");
+  const categoryPan = useDragScroll<HTMLDivElement>();
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState("default");
   const [query, setQuery] = useState("");
@@ -300,6 +301,17 @@ function AppInner(): React.JSX.Element {
     });
   }, [persistBooth]);
 
+  // 開会・閉会のタイミングで、管理者が全ブースの営業状態をまとめて切り替える
+  const bulkOpen = useCallback((open: boolean) => {
+    const targets = booths.filter((b) => b.isOpen !== open);
+    if (targets.length === 0) {
+      showToast(open ? "すべて営業中になっています" : "すべて準備中になっています", "info");
+      return;
+    }
+    targets.forEach((b) => updateBooth(b.id, { isOpen: open }));
+    showToast(open ? `${targets.length}ブースを営業中にしました` : `${targets.length}ブースを準備中にしました`);
+  }, [booths, showToast, updateBooth]);
+
   const toggleFavorite = useCallback((id: string) => {
     setFavorites((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   }, []);
@@ -529,6 +541,7 @@ function AppInner(): React.JSX.Element {
           onResetSeed={() => setConfirmReset(true)}
           onSaveSnapshot={() => void handleSaveSnapshot()}
           onOpenSnapshots={() => void handleOpenSnapshots()}
+          onBulkOpen={bulkOpen}
           showToast={showToast}
         />
       )}
@@ -567,7 +580,7 @@ function AppInner(): React.JSX.Element {
               </div>
             </div>
             <div className="relative max-w-xl mx-auto px-4 pb-3.5">
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1">
+              <div {...categoryPan} className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
                 {CATEGORIES.map((c) => (
                   <button key={c.id} onClick={() => setCategory(c.id)}
                     className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${category === c.id ? "bg-white shadow-md" : "bg-white/25 text-white backdrop-blur hover:bg-white/40"}`}
