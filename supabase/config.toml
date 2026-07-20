@@ -1,4 +1,4 @@
-[functions.festival-admin]
+[functions.super-handler]
 # The browser uses a Supabase publishable key in the apikey header.
 # The function validates that key itself so both modern publishable keys and
 # legacy anon keys work without depending on JWT-shaped keys.
