@@ -112,6 +112,18 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
   const status = getStatus(booth.waitMinutes, booth.isOpen);
   const recent = useMemo(() => (booth.history || []).slice(-20), [booth.history]);
 
+  // このブースへ直接飛べるURL(QRポスターやSNS共有用)
+  const [copied, setCopied] = useState(false);
+  const shareBooth = async () => {
+    const url = `${location.origin}${location.pathname}?b=${encodeURIComponent(booth.id)}`;
+    try {
+      if (navigator.share) { await navigator.share({ title: `${booth.name} | まちたいむ`, url }); return; }
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch { /* 共有キャンセル */ }
+  };
+
   return (
     <Sheet onClose={onClose} title="ブース詳細">
       <div className="px-6 pt-2 pb-8">
@@ -175,6 +187,9 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
                 return (
                   <span key={p.id} className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${sold ? "bg-stone-100 border-stone-200 text-stone-400 line-through" : low ? "bg-amber-50 border-amber-300 text-amber-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
                     {p.name}
+                    {(p.allergens ?? []).length > 0 && (
+                      <span className="text-[9px] font-black text-rose-600 no-underline" style={{ textDecoration: "none" }}>⚠{(p.allergens ?? []).join("・")}</span>
+                    )}
                     {sold ? <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-red-600 text-white no-underline" style={{ textDecoration: "none" }}>売り切れ</span>
                       : low ? <span className="text-[9px] font-black text-amber-600">残りわずか</span>
                       : <span className="text-[9px] font-black text-emerald-600">販売中</span>}
@@ -182,6 +197,9 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
                 );
               })}
             </div>
+            {booth.products.some((p) => (p.allergens ?? []).length > 0) && (
+              <div className="text-[10px] text-stone-400 mt-2.5 leading-relaxed">⚠ はアレルギー表示(特定原材料8品目・目安)です。必ずブースの掲示とスタッフにご確認ください。</div>
+            )}
           </div>
         )}
 
@@ -189,6 +207,11 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
           <InfoRow icon={MapPin} label="場所" value={formatLocation(booth)} />
           <InfoRow icon={Info} label="紹介" value={booth.description} multiline />
         </div>
+
+        <button onClick={() => void shareBooth()}
+          className="w-full mt-5 py-3 rounded-2xl border border-stone-200 bg-white text-stone-600 text-sm font-bold flex items-center justify-center gap-1.5 active:scale-[0.98]">
+          🔗 {copied ? "リンクをコピーしました！" : "このブースを共有"}
+        </button>
       </div>
     </Sheet>
   );

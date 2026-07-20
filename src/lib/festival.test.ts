@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  avgCycle, allSoldOut, boothsForRoom, calcWait, formatLocation, isSoldOut, itemStatus, makeBooth,
-  makeStageItem, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage, seedBooths, seedStage, sortItems, toMin,
-  todayFestivalDay,
+  ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, daysUntilFestival, formatLocation, isSoldOut,
+  itemStatus, makeBooth, makeStageItem, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage, seedBooths,
+  seedStage, sortItems, toMin, todayFestivalDay,
 } from "./festival";
 import type { Booth } from "../types";
 
@@ -155,5 +155,19 @@ describe("todayFestivalDay", () => {
     expect(todayFestivalDay(jst("2026-08-31T00:10:00+09:00"))).toBeNull();
     // UTCでは28日でも、JSTでは29日 → 1日目
     expect(todayFestivalDay(jst("2026-08-28T23:30:00+00:00"))).toBe(1);
+  });
+  it("counts days until the festival in JST", () => {
+    expect(daysUntilFestival(jst("2026-08-28T09:00:00+09:00"))).toBe(1);
+    expect(daysUntilFestival(jst("2026-08-01T00:00:00+09:00"))).toBe(28);
+    expect(daysUntilFestival(jst("2026-08-29T00:00:00+09:00"))).toBeNull();
+    expect(daysUntilFestival(jst("2026-09-01T00:00:00+09:00"))).toBeNull();
+  });
+});
+
+describe("allergens", () => {
+  it("keeps only the 8 designated allergens on products", () => {
+    const booth = makeBooth({ products: [{ id: "p1", name: "クレープ", stock: 10, soldOut: false, allergens: ["卵", "乳", "ダニ", 1, "小麦"] }] }, "b1");
+    expect(booth.products[0]!.allergens).toEqual(["卵", "乳", "小麦"]);
+    expect(ALLERGENS).toHaveLength(8);
   });
 });

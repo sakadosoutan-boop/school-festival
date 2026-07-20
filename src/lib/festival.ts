@@ -20,6 +20,17 @@ export function todayFestivalDay(now = Date.now()): number | null {
   return idx === -1 ? null : idx + 1;
 }
 
+/** 開催初日まであと何日か(当日以降はnull)。JSTの日付単位で数える。 */
+export function daysUntilFestival(now = Date.now()): number | null {
+  const jstToday = new Date(now + 9 * 3600_000).toISOString().slice(0, 10);
+  if (jstToday >= FESTIVAL_DATES[0]) return null;
+  const diff = Date.parse(`${FESTIVAL_DATES[0]}T00:00:00Z`) - Date.parse(`${jstToday}T00:00:00Z`);
+  return Math.round(diff / 86_400_000);
+}
+
+// 食品表示の特定原材料8品目。商品ごとに含むものを選んで表示する(目安表示)。
+export const ALLERGENS = ["卵", "乳", "小麦", "そば", "落花生", "えび", "かに", "くるみ"] as const;
+
 // 企画投票用GoogleフォームのURL。空ならバナー自体を表示しない
 // (プレースホルダーの死にリンクを本番に出さないため、環境変数で注入する)。
 export const VOTE_FORM_URL = ((import.meta.env?.VITE_VOTE_FORM_URL as string | undefined) ?? "").trim();
@@ -218,6 +229,7 @@ export function makeBooth(partial: unknown, id?: string): Booth {
     name: str(p.name),
     stock: num(p.stock, 0),
     soldOut: bool(p.soldOut, false),
+    allergens: arr<unknown>(p.allergens).filter((a): a is string => typeof a === "string" && (ALLERGENS as readonly string[]).includes(a)),
   }));
   merged.organizer = str(merged.organizer);
   merged.orgType = merged.orgType === "club" ? "club" : merged.orgType === "other" ? "other" : "class";
