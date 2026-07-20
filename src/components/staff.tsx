@@ -6,12 +6,12 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  APP_NAME, avgCycle, BUILDINGS, calcWait, CATEGORIES, CLASS_NUMS, EMOJI_PALETTE, FLOORS, formatCycle,
+  ALLERGENS, APP_NAME, avgCycle, BUILDINGS, calcWait, CATEGORIES, CLASS_NUMS, EMOJI_PALETTE, FLOORS, formatCycle,
   formatLocation, formatOrganizer, formatTime, freshness, getStatus, GRADES, isSoldOut, makeBooth,
   minutesSince, NAG_MINUTES, ORG_TYPES, THEME,
 } from "../lib/festival";
 import { backendConfigured, DEMO_ADMIN_PIN, DEMO_STAFF_PIN } from "../lib/api";
-import type { Booth, Product, SnapshotMeta, StaffRole } from "../types";
+import type { Booth, FestivalNotice, Product, SnapshotMeta, StaffRole } from "../types";
 import { BoothIcon, Confirm, Field, Hint, IconButton, NumberStepper, QuickPick, Sheet, Wheel } from "./ui";
 
 /* ═══════════ STAFF: PIN LOGIN ═══════════ */
@@ -535,9 +535,23 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
                         {p.soldOut ? "売り切れ中" : "売り切れに"}
                       </button>
                     </div>
+                    <div className="flex flex-wrap items-center gap-1 mt-2.5">
+                      <span className="text-[10px] font-bold text-stone-400 mr-0.5">アレルギー:</span>
+                      {ALLERGENS.map((a) => {
+                        const on = (p.allergens ?? []).includes(a);
+                        return (
+                          <button key={a}
+                            onClick={() => updProduct(p.id, { allergens: on ? (p.allergens ?? []).filter((x) => x !== a) : [...(p.allergens ?? []), a] })}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors active:scale-95 ${on ? "bg-rose-600 border-rose-600 text-white" : "bg-white border-stone-200 text-stone-500"}`}>
+                            {a}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
+              <div className="text-[10px] text-stone-400">アレルギーは含むものをタップ(お客さんの画面に⚠表示)。表示は目安のため、ブースにも必ず掲示してください。</div>
             </div>
           )}
 
@@ -647,7 +661,7 @@ export const CalculatorSheet = ({ booth, onClose, onApply }: { booth: Booth; onC
 
 /* ═══════════ SETTINGS ═══════════ */
 
-export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, showToast }: {
+export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, notices, onSaveNotices, showToast }: {
   role: StaffRole;
   booths: Booth[];
   emergencyNotice: string;
@@ -661,11 +675,15 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
   onSaveSnapshot: () => void;
   onOpenSnapshots: () => void;
   onBulkOpen: (open: boolean) => void;
+  notices: FestivalNotice[];
+  onSaveNotices: (notices: FestivalNotice[]) => void;
   showToast: (message: string, type?: "success" | "error" | "info" | "warn") => void;
 }) => {
   const [staffPin, setStaffPin] = useState("");
   const [adminPin, setAdminPin] = useState("");
   const [confirmBulk, setConfirmBulk] = useState<boolean | null>(null);
+  const [noticeText, setNoticeText] = useState("");
+  const [noticeKind, setNoticeKind] = useState<FestivalNotice["kind"]>("lost");
   const [notice, setNotice] = useState(emergencyNotice);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const isAdmin = role === "admin";
@@ -712,6 +730,50 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
               <button onClick={() => setConfirmBulk(false)} disabled={busy}
                 className="py-3 rounded-xl border border-stone-200 bg-white text-stone-700 font-bold text-sm active:scale-95 disabled:opacity-40">🔴 一斉閉店</button>
             </div>
+          </div>
+        )}
+
+        {/* 落とし物・迷子の掲示板(管理者) */}
+        {isAdmin && (
+          <div className="bg-white rounded-2xl p-5 border border-stone-200">
+            <div className="flex items-center gap-2 mb-3"><span className="text-base">📌</span><div className="font-bold text-stone-900">落とし物・迷子の掲示板</div></div>
+            <p className="text-xs text-stone-500 mb-3 leading-relaxed">来場者のホーム画面に一覧表示されます(最大12件・100文字)。解決したら削除してください。</p>
+            <div className="flex gap-1.5 mb-2">
+              {([["lost", "🧳 落とし物"], ["child", "👶 迷子"], ["info", "📢 その他"]] as const).map(([k, label]) => (
+                <button key={k} onClick={() => setNoticeKind(k)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors active:scale-95 ${noticeKind === k ? "bg-stone-900 border-stone-900 text-white" : "bg-white border-stone-200 text-stone-600"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input type="text" value={noticeText} maxLength={100} onChange={(e) => setNoticeText(e.target.value)}
+                placeholder={noticeKind === "lost" ? "例: 黒い水筒をかえる広場で保護しています" : noticeKind === "child" ? "例: 青い帽子のお子さんをお預かりしています" : "例: 15時から抽選会をピロティで開催"}
+                className="flex-1 px-4 py-3 rounded-xl border border-stone-200 text-sm bg-white outline-none focus:border-stone-900" />
+              <button
+                onClick={() => {
+                  const text = noticeText.trim();
+                  if (!text) { showToast("内容を入力してください", "error"); return; }
+                  onSaveNotices([{ id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, kind: noticeKind, text, ts: Date.now() }, ...notices].slice(0, 12));
+                  setNoticeText("");
+                }}
+                disabled={busy || !noticeText.trim()}
+                className="px-4 rounded-xl bg-stone-900 text-white font-bold text-sm active:scale-95 disabled:opacity-40">掲示</button>
+            </div>
+            {notices.length > 0 && (
+              <div className="space-y-2 mt-3">
+                {notices.map((n) => (
+                  <div key={n.id} className="flex items-start gap-2 p-2.5 rounded-xl bg-stone-50 border border-stone-200">
+                    <span className="text-base flex-shrink-0">{n.kind === "lost" ? "🧳" : n.kind === "child" ? "👶" : "📢"}</span>
+                    <div className="flex-1 text-sm text-stone-700 leading-snug">{n.text}<span className="text-[10px] text-stone-400 ml-1.5">{formatTime(n.ts)}</span></div>
+                    <button onClick={() => onSaveNotices(notices.filter((x) => x.id !== n.id))} disabled={busy}
+                      className="w-7 h-7 rounded-lg bg-white border border-stone-200 flex items-center justify-center active:scale-90 flex-shrink-0 disabled:opacity-40" aria-label="掲示を削除">
+                      <Trash2 size={13} className="text-stone-400" strokeWidth={2.4} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

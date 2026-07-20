@@ -9,6 +9,8 @@ export interface Product {
   name: string;
   stock: number;
   soldOut: boolean;
+  // 特定原材料8品目のうち含むもの(表示は目安。現地掲示が正)
+  allergens?: string[];
 }
 
 export interface Booth {
@@ -67,9 +69,18 @@ export interface StageProgram {
   items: StageItem[];
 }
 
+// 落とし物・迷子などの掲示板(全体お知らせより軽い情報)
+export interface FestivalNotice {
+  id: string;
+  kind: "lost" | "child" | "info";
+  text: string;
+  ts: number;
+}
+
 export interface FestivalSettings {
   festivalName: string;
   emergencyNotice: string;
+  notices?: FestivalNotice[];
 }
 
 export interface FestivalData {

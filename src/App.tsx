@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Eye, HelpCircle, Map as MapIcon, Megaphone, Music, RefreshCw, ShieldCheck, Star, WifiOff } from "lucide-react";
 import {
-  allSoldOut, avgCycle, calcWait, CATEGORIES, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS, sanitizeStage,
-  seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME, todayFestivalDay, VOTE_FORM_URL,
+  allSoldOut, avgCycle, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
+  sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME, todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
   apiConfigError, backendConfigured, cachedData, changePin, createSnapshot, deleteBooth as apiDeleteBooth, fetchAll,
@@ -10,7 +10,7 @@ import {
   saveStage as apiSaveStage, updateSettings, verifyPin,
 } from "./lib/api";
 import { normalizeForSearch } from "./lib/text";
-import type { Booth, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
+import type { Booth, FestivalNotice, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
 import { EmptyState, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll } from "./components/ui";
 import type { ToastType } from "./components/ui";
 import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
@@ -259,6 +259,15 @@ function AppInner(): React.JSX.Element {
     return () => window.clearInterval(hb);
   }, [staffAuthed, staffBoothId, staffPin]);
 
+  /* ── QR・共有リンク対応: ?b=ブースID で詳細を直接開く / ?tab=stage|map でタブ指定 ── */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab");
+    if (tab === "stage" || tab === "map") setView(tab);
+    const b = params.get("b");
+    if (b && /^[\w-]{1,64}$/.test(b)) setSelectedId(b);
+  }, []);
+
   /* ── ローカル設定の永続化 ── */
   useEffect(() => {
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ favorites, onboarded })); } catch { /* private mode */ }
@@ -422,6 +431,15 @@ function AppInner(): React.JSX.Element {
     showToast(notice ? "全体お知らせを公開しました" : "全体お知らせを解除しました");
   }, [showToast, staffPin]);
 
+  const saveNotices = useCallback(async (notices: FestivalNotice[]) => {
+    setBusy(true);
+    const result = await updateSettings(staffPin, { notices });
+    setBusy(false);
+    if (!result.ok || !result.data) { showToast(result.error ?? "掲示板を更新できませんでした", "error"); return; }
+    setSettings(result.data);
+    showToast("掲示板を更新しました");
+  }, [showToast, staffPin]);
+
   const exportData = useCallback(() => {
     // PINはバックアップに含めない(ファイル共有経由の漏えい防止)
     const payload = { app: "まちたいむ", version: 6, exportedAt: new Date().toISOString(), booths, stage };
@@ -523,6 +541,7 @@ function AppInner(): React.JSX.Element {
 
   const openBooths = booths.filter((b) => b.isOpen);
   const avgWait = openBooths.length === 0 ? 0 : Math.round(openBooths.reduce((s, b) => s + b.waitMinutes, 0) / openBooths.length);
+  const daysToGo = daysUntilFestival();
   const staffBooth = booths.find((b) => b.id === staffBoothId);
   const selectedBooth = booths.find((b) => b.id === selectedId);
   void tick; // 20秒ごとの再レンダリングで相対時刻・進行状況を進める
@@ -555,6 +574,8 @@ function AppInner(): React.JSX.Element {
           onSaveSnapshot={() => void handleSaveSnapshot()}
           onOpenSnapshots={() => void handleOpenSnapshots()}
           onBulkOpen={bulkOpen}
+          notices={settings.notices ?? []}
+          onSaveNotices={(n) => void saveNotices(n)}
           showToast={showToast}
         />
       )}
@@ -591,6 +612,11 @@ function AppInner(): React.JSX.Element {
                 <StatCard label="平均待ち" value={`${avgWait}`} unit="分" />
                 <StatCard label="最終同期" value={backendConfigured ? formatTime(fetchedAt) : (booths.length ? formatTime(Math.max(...booths.map((b) => b.lastUpdated || 0))) : "—")} />
               </div>
+              {daysToGo != null && daysToGo > 0 && (
+                <div className="mt-3 px-3 py-2 rounded-xl bg-white/25 backdrop-blur text-white text-xs font-black text-center">
+                  🎉 やなぎ祭まであと{daysToGo}日（8/29土・8/30日 開催）
+                </div>
+              )}
             </div>
             <div className="relative max-w-xl mx-auto px-4 pb-3.5">
               {/* PC向け: ドラッグに気づかなくても押せる左右ボタン */}
@@ -619,6 +645,28 @@ function AppInner(): React.JSX.Element {
               <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border-2 border-red-300 flex items-start gap-2.5" role="alert">
                 <Megaphone size={18} className="text-red-600 mt-0.5 flex-shrink-0" strokeWidth={2.4} />
                 <div className="text-sm text-red-900 leading-relaxed"><strong className="font-black">お知らせ：</strong>{settings.emergencyNotice}</div>
+              </div>
+            )}
+
+            {(settings.notices ?? []).length > 0 && (
+              <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-amber-200">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <span className="text-base">📌</span>
+                  <span className="font-black text-sm" style={{ color: THEME.ink }}>お知らせ掲示板</span>
+                  <span className="text-xs text-stone-400">({(settings.notices ?? []).length}件)</span>
+                </div>
+                <div className="space-y-2">
+                  {(settings.notices ?? []).map((n) => (
+                    <div key={n.id} className="flex items-start gap-2">
+                      <span className="text-base flex-shrink-0">{n.kind === "lost" ? "🧳" : n.kind === "child" ? "👶" : "📢"}</span>
+                      <div className="flex-1 text-sm text-stone-700 leading-snug">
+                        {n.text}
+                        <span className="text-[10px] text-stone-400 ml-1.5">{formatTime(n.ts)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-stone-400 mt-2.5">お心当たりのある方は運営本部へお声がけください</div>
               </div>
             )}
 

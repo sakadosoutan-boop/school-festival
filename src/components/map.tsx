@@ -22,56 +22,57 @@ const MAP_MISC: MapMisc[] = [
   { id: "gate", label: "正門", x: 4, y: 112, w: 8, h: 16, kind: "gate" },
   { id: "panel", label: "顔出し\nパネル", x: 16, y: 92, w: 14, h: 11, kind: "misc" },
   { id: "fountain", label: "噴水", x: 18, y: 120, w: 12, h: 11, kind: "misc" },
-  { id: "gaikoku", label: "外国語科棟", x: 40, y: 126, w: 24, h: 12, kind: "facility", bId: "gaikoku" },
-  { id: "piloti", label: "ピロティー", x: 66, y: 126, w: 20, h: 12, kind: "facility" },
+  { id: "gaikoku", label: "外国語科棟", x: 40, y: 126, w: 28, h: 12, kind: "facility", bId: "gaikoku" },
+  { id: "piloti", label: "ピロティー", x: 72, y: 126, w: 20, h: 12, kind: "facility" },
   { id: "shokudo", label: "1F食堂 🍴\n2F合宿棟", x: 96, y: 124, w: 30, h: 14, kind: "facility" },
-  { id: "gym", label: "体育館 🎤", x: 40, y: 146, w: 34, h: 14, kind: "gym" },
-  { id: "bushitsu", label: "部室棟/卓球場", x: 80, y: 146, w: 34, h: 14, kind: "facility" },
-  { id: "ground", label: "グラウンド", x: 178, y: 46, w: 58, h: 76, kind: "ground", bId: "outdoor" },
+  { id: "gym", label: "体育館 🎤", x: 40, y: 146, w: 44, h: 14, kind: "gym" },
+  { id: "bushitsu", label: "部室棟/卓球場", x: 90, y: 146, w: 40, h: 14, kind: "facility" },
+  // グラウンドは企画数が少ないので最小限にし、教室棟へ面積を譲る
+  { id: "ground", label: "グラウンド", x: 206, y: 46, w: 30, h: 76, kind: "ground", bId: "outdoor" },
 ];
 
 // かえる広場(イートインスペース・アンブレラスカイ☂️・ゴミ箱あり)。
 // アイコンと文字が重ならないよう、実マップに合わせて幅を広めに取る。
-const FROG_PLAZA = { x: 46, y: 45, w: 68, h: 10, bId: "outdoor", label: "かえる広場" };
+const FROG_PLAZA = { x: 46, y: 46, w: 84, h: 11, bId: "outdoor", label: "かえる広場" };
 
 interface MapRoom { n: string; w: number; off?: boolean; vend?: boolean }
 interface MapBlock { id: string; label: string; lx: number; ly: number; x: number; y: number; w: number; floorH: number; entrance?: { x: number; y: number; w: number; h: number; label: string }; floors: Array<{ f: string; rooms: MapRoom[] }> }
 
 const MAP_BLOCKS: MapBlock[] = [
-  { id: "special", label: "特別棟", lx: 42, ly: 11, x: 42, y: 13, w: 100, floorH: 7,
+  { id: "special", label: "特別棟", lx: 40, ly: 11, x: 40, y: 13, w: 130, floorH: 7.5,
     floors: [
-      { f: "4F", rooms: [{ n: "視聴覚室", w: 18 }, { n: "図書室", w: 62 }, { n: "音楽室", w: 20 }] },
-      { f: "3F", rooms: [{ n: "地学室", w: 18 }, { n: "社会科室", w: 24 }, { n: "書道室", w: 20 }, { n: "書道準備室", w: 14 }, { n: "美術室", w: 24 }] },
-      { f: "2F", rooms: [{ n: "生物室", w: 18 }, { n: "理科第1講義室", w: 26 }, { n: "理科第2講義室", w: 26 }, { n: "数学準備室", w: 14 }, { n: "物理室", w: 16 }] },
-      { f: "1F", rooms: [{ n: "化学室", w: 18 }, { n: "被服室", w: 20 }, { n: "家庭科室", w: 22 }, { n: "礼法室", w: 16 }, { n: "調理室", w: 24 }] },
+      { f: "4F", rooms: [{ n: "視聴覚室", w: 23.4 }, { n: "図書室", w: 80.6 }, { n: "音楽室", w: 26 }] },
+      { f: "3F", rooms: [{ n: "地学室", w: 23.4 }, { n: "社会科室", w: 31.2 }, { n: "書道室", w: 26 }, { n: "書道準備室", w: 18.2 }, { n: "美術室", w: 31.2 }] },
+      { f: "2F", rooms: [{ n: "生物室", w: 23.4 }, { n: "理科第1講義室", w: 33.8 }, { n: "理科第2講義室", w: 33.8 }, { n: "数学準備室", w: 18.2 }, { n: "物理室", w: 20.8 }] },
+      { f: "1F", rooms: [{ n: "化学室", w: 23.4 }, { n: "被服室", w: 26 }, { n: "家庭科室", w: 28.6 }, { n: "礼法室", w: 20.8 }, { n: "調理室", w: 31.2 }] },
     ] },
-  { id: "hr", label: "HR棟", lx: 22, ly: 56, x: 30, y: 58, w: 124, floorH: 9,
-    entrance: { x: 22, y: 58, w: 8, h: 27, label: "昇降口" },
+  { id: "hr", label: "HR棟", lx: 22, ly: 58, x: 30, y: 60, w: 161.2, floorH: 10,
+    entrance: { x: 22, y: 60, w: 8, h: 30, label: "昇降口" },
     floors: [
-      { f: "3F", rooms: [{ n: "多目的室", w: 16 }, { n: "1-1", w: 15.43 }, { n: "1-2", w: 15.43 }, { n: "1-3", w: 15.43 }, { n: "1-4", w: 15.43 }, { n: "1-5", w: 15.43 }, { n: "1-6", w: 15.43 }, { n: "1-7", w: 15.42 }] },
-      { f: "2F", rooms: [{ n: "多目的室", w: 16 }, { n: "2-1", w: 15.43 }, { n: "2-2", w: 15.43 }, { n: "2-3", w: 15.43 }, { n: "2-4", w: 15.43 }, { n: "2-5", w: 15.43 }, { n: "2-6", w: 15.43 }, { n: "2-7", w: 15.42 }] },
-      { f: "1F", rooms: [{ n: "3-1", w: 15.5 }, { n: "3-2", w: 15.5 }, { n: "3-3", w: 15.5 }, { n: "3-4", w: 15.5 }, { n: "3-5", w: 15.5 }, { n: "3-6", w: 15.5 }, { n: "3-7", w: 15.5 }, { n: "3-8", w: 15.5 }] },
+      { f: "3F", rooms: [{ n: "多目的室", w: 20.8 }, { n: "1-1", w: 20.06 }, { n: "1-2", w: 20.06 }, { n: "1-3", w: 20.06 }, { n: "1-4", w: 20.06 }, { n: "1-5", w: 20.06 }, { n: "1-6", w: 20.06 }, { n: "1-7", w: 20.04 }] },
+      { f: "2F", rooms: [{ n: "多目的室", w: 20.8 }, { n: "2-1", w: 20.06 }, { n: "2-2", w: 20.06 }, { n: "2-3", w: 20.06 }, { n: "2-4", w: 20.06 }, { n: "2-5", w: 20.06 }, { n: "2-6", w: 20.06 }, { n: "2-7", w: 20.04 }] },
+      { f: "1F", rooms: [{ n: "3-1", w: 20.15 }, { n: "3-2", w: 20.15 }, { n: "3-3", w: 20.15 }, { n: "3-4", w: 20.15 }, { n: "3-5", w: 20.15 }, { n: "3-6", w: 20.15 }, { n: "3-7", w: 20.15 }, { n: "3-8", w: 20.15 }] },
     ] },
-  { id: "admin", label: "管理棟", lx: 40, ly: 90, x: 40, y: 92, w: 100, floorH: 8,
+  { id: "admin", label: "管理棟", lx: 40, ly: 95, x: 40, y: 97, w: 130, floorH: 9,
     floors: [
-      { f: "2F", rooms: [{ n: "会議室", w: 20 }, { n: "放送室", w: 20 }, { n: "職員室", w: 60 }] },
-      { f: "1F", rooms: [{ n: "事務室", w: 20 }, { n: "校長室", w: 20 }, { n: "応接室", w: 20 }, { n: "保健室", w: 20 }, { n: "進路資料室", w: 20 }] },
+      { f: "2F", rooms: [{ n: "会議室", w: 26 }, { n: "放送室", w: 26 }, { n: "職員室", w: 78 }] },
+      { f: "1F", rooms: [{ n: "事務室", w: 26 }, { n: "校長室", w: 26 }, { n: "応接室", w: 26 }, { n: "保健室", w: 26 }, { n: "進路資料室", w: 26 }] },
     ] },
   // 増設棟は管理棟と繋がっているため、横に密着させて階数表示は出さない
   // (HR棟とは離す)。自販機は自習室の中にあるので、セル内アイコンで示す。
-  { id: "extra", label: "増設棟", lx: 140, ly: 90, x: 140, y: 92, w: 30, floorH: 8,
+  { id: "extra", label: "増設棟", lx: 170, ly: 95, x: 170, y: 97, w: 34, floorH: 9,
     floors: [
-      { f: "", rooms: [{ n: "1-8", w: 15 }, { n: "1-9", w: 15 }] },
-      { f: "", rooms: [{ n: "2-8", w: 15 }, { n: "2-9", w: 15 }] },
-      { f: "", rooms: [{ n: "自習室", w: 15, vend: true }, { n: "3-9", w: 15 }] },
+      { f: "", rooms: [{ n: "1-8", w: 17 }, { n: "1-9", w: 17 }] },
+      { f: "", rooms: [{ n: "2-8", w: 17 }, { n: "2-9", w: 17 }] },
+      { f: "", rooms: [{ n: "自習室", w: 17, vend: true }, { n: "3-9", w: 17 }] },
     ] },
 ];
 
 // 自販機(建物内は該当セルのアイコンで表示):
 //   HR棟1F 昇降口と3-1の間 / 食堂入口
 const VENDING_SPOTS = [
-  { x: 30.8, y: 81.2 },
-  { x: 101, y: 121.5 },
+  { x: 30.8, y: 85.5 },
+  { x: 101, y: 120.5 },
 ];
 
 export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJump: (id: string) => void; onOpenStage: () => void }) => {
@@ -153,7 +154,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                     ) : (
                       lines.map((line, i) => (
                         <text key={i} x={mcx} y={mcy + (i - (lines.length - 1) / 2) * 4 + 1.1}
-                          textAnchor="middle" fontSize={m.kind === "misc" ? 2.7 : 3.1} fontWeight="800" fill={tfill}>{line}</text>
+                          textAnchor="middle" fontSize={m.kind === "misc" ? 2.9 : 3.4} fontWeight="800" fill={tfill}>{line}</text>
                       ))
                     )}
                   </g>
@@ -173,26 +174,26 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                     {has && <rect x={FROG_PLAZA.x - 1} y={FROG_PLAZA.y - 1} width={FROG_PLAZA.w + 2} height={FROG_PLAZA.h + 2} rx="2.2" fill="#ffb157" opacity="0.22" />}
                     <rect x={FROG_PLAZA.x} y={FROG_PLAZA.y} width={FROG_PLAZA.w} height={FROG_PLAZA.h} rx="1.6"
                       fill={has ? "#fff3e0" : "#f7f1e6"} stroke={has ? "#ff9e3d" : "#e0d8c8"} strokeWidth={has ? 0.9 : 0.5} />
-                    <text x={FROG_PLAZA.x + 5} y={fcy + 1.3} textAnchor="middle" fontSize="3">☂️</text>
-                    {hasFood && <text x={FROG_PLAZA.x + 11} y={fcy + 1.3} textAnchor="middle" fontSize="3">🍴</text>}
-                    <text x={fcx} y={fcy - 0.6} textAnchor="middle" fontSize="3.1" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
-                    <text x={fcx} y={fcy + 3.6} textAnchor="middle" fontSize="2.2" fontWeight="800" fill={has ? "#a06a35" : "#b3aca0"}>イートインスペース</text>
-                    {has && wait != null && <text x={FROG_PLAZA.x + FROG_PLAZA.w - 15} y={fcy + 1.1} textAnchor="middle" fontSize="2.7" fontWeight="900" fill="#e6206b">{wait}分</text>}
-                    <text x={FROG_PLAZA.x + FROG_PLAZA.w - 5} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">🗑️</text>
+                    <text x={FROG_PLAZA.x + 5.5} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">☂️</text>
+                    {hasFood && <text x={FROG_PLAZA.x + 12} y={fcy + 1.4} textAnchor="middle" fontSize="3.4">🍴</text>}
+                    <text x={fcx} y={fcy - 0.8} textAnchor="middle" fontSize="3.5" fontWeight="800" fill={has ? "#5b3a1e" : "#9b968e"}>{FROG_PLAZA.label}</text>
+                    <text x={fcx} y={fcy + 3.9} textAnchor="middle" fontSize="2.5" fontWeight="800" fill={has ? "#a06a35" : "#b3aca0"}>イートインスペース</text>
+                    {has && wait != null && <text x={FROG_PLAZA.x + FROG_PLAZA.w - 15} y={fcy + 1.1} textAnchor="middle" fontSize="3" fontWeight="900" fill="#e6206b">{wait}分</text>}
+                    <text x={FROG_PLAZA.x + FROG_PLAZA.w - 5.5} y={fcy + 1.5} textAnchor="middle" fontSize="3.8">🗑️</text>
                   </g>
                 );
               })()}
 
               {MAP_BLOCKS.map((blk) => (
                 <g key={blk.id}>
-                  <text x={blk.lx} y={blk.ly} fontSize="4" fontWeight="900" fill="#6b6660">{blk.label}</text>
+                  <text x={blk.lx} y={blk.ly} fontSize="4.4" fontWeight="900" fill="#6b6660">{blk.label}</text>
                   {blk.entrance && (
                     <g>
                       <rect x={blk.entrance.x} y={blk.entrance.y} width={blk.entrance.w} height={blk.entrance.h}
                         fill="#fff" stroke="#c9c4bb" strokeWidth="0.6" />
                       {blk.entrance.label.split("").map((ch, i) => (
                         <text key={i} x={blk.entrance!.x + blk.entrance!.w / 2} y={blk.entrance!.y + 7 + i * 7.5}
-                          textAnchor="middle" fontSize="3.1" fontWeight="800" fill="#7a756c">{ch}</text>
+                          textAnchor="middle" fontSize="3.4" fontWeight="800" fill="#7a756c">{ch}</text>
                       ))}
                     </g>
                   )}
@@ -202,7 +203,7 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                     let cursorX = blk.x;
                     return (
                       <g key={fi}>
-                        {fl.f && <text x={labelX} y={fy + blk.floorH / 2 + 1.1} textAnchor="end" fontSize="2.9" fontWeight="800" fill="#9b968e">{fl.f}</text>}
+                        {fl.f && <text x={labelX} y={fy + blk.floorH / 2 + 1.1} textAnchor="end" fontSize="3.2" fontWeight="800" fill="#9b968e">{fl.f}</text>}
                         {fl.rooms.map((rm, ri) => {
                           const rx = cursorX; cursorX += rm.w;
                           const matched = (rm.n && !rm.off) ? boothsForRoom(booths, rm.n) : [];
@@ -219,20 +220,20 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
                                 fill={rm.off ? "#eceae6" : has ? "#fff3e0" : rm.n ? "#ffffff" : "#fbfaf8"}
                                 stroke={has ? "#ff9e3d" : "#ddd9d2"} strokeWidth={has ? 0.8 : 0.35} />
                               {rm.off && (
-                                <text x={rx + rm.w / 2} y={fy + blk.floorH / 2 + 1} textAnchor="middle" fontSize="2.8" fontWeight="700" fill="#b0aaa0">{rm.n}</text>
+                                <text x={rx + rm.w / 2} y={fy + blk.floorH / 2 + 1} textAnchor="middle" fontSize="3" fontWeight="700" fill="#b0aaa0">{rm.n}</text>
                               )}
                               {rm.n && !rm.off && (
                                 <text x={rx + rm.w / 2} y={has ? fy + blk.floorH / 2 - 0.7 : fy + blk.floorH / 2 + 1.1}
-                                  textAnchor="middle" fontSize={rm.n.length >= 6 ? 2.1 : rm.n.length >= 4 ? 2.6 : 3} fontWeight="800"
+                                  textAnchor="middle" fontSize={rm.n.length >= 6 ? 2.4 : rm.n.length >= 4 ? 2.9 : 3.4} fontWeight="800"
                                   fill={has ? "#5b3a1e" : "#8a857c"}>{rm.n}</text>
                               )}
                               {has && bt && (
                                 sold
-                                  ? <text x={rx + rm.w / 2} y={fy + blk.floorH - 1.2} textAnchor="middle" fontSize="2.5" fontWeight="900" fill="#dc2626">完売</text>
-                                  : <text x={rx + rm.w / 2} y={fy + blk.floorH - 1.2} textAnchor="middle" fontSize="2.5" fontWeight="900" fill="#e6206b">{bt.isOpen ? `${bt.waitMinutes}分` : "休"}</text>
+                                  ? <text x={rx + rm.w / 2} y={fy + blk.floorH - 1.2} textAnchor="middle" fontSize="2.8" fontWeight="900" fill="#dc2626">完売</text>
+                                  : <text x={rx + rm.w / 2} y={fy + blk.floorH - 1.2} textAnchor="middle" fontSize="2.8" fontWeight="900" fill="#e6206b">{bt.isOpen ? `${bt.waitMinutes}分` : "休"}</text>
                               )}
-                              {isFood && <text x={rx + rm.w - 2.2} y={fy + 3} textAnchor="middle" fontSize="2.7">🍴</text>}
-                              {rm.vend && <text x={rx + (isFood ? rm.w - 7.7 : rm.w - 3.2)} y={fy + 3} textAnchor="middle" fontSize="2.7">🥤</text>}
+                              {isFood && <text x={rx + rm.w - 2.5} y={fy + 3.2} textAnchor="middle" fontSize="3">🍴</text>}
+                              {rm.vend && <text x={rx + (isFood ? rm.w - 8.5 : rm.w - 3.6)} y={fy + 3.2} textAnchor="middle" fontSize="3">🥤</text>}
                             </g>
                           );
                         })}
@@ -244,8 +245,8 @@ export const MapView = ({ booths, onJump, onOpenStage }: { booths: Booth[]; onJu
 
               {VENDING_SPOTS.map((v, i) => (
                 <g key={i}>
-                  <circle cx={v.x} cy={v.y} r="3.2" fill="#fff" stroke="#e2dcd2" strokeWidth="0.45" />
-                  <text x={v.x} y={v.y + 1.3} textAnchor="middle" fontSize="3.6">🥤</text>
+                  <circle cx={v.x} cy={v.y} r="3.4" fill="#fff" stroke="#e2dcd2" strokeWidth="0.45" />
+                  <text x={v.x} y={v.y + 1.4} textAnchor="middle" fontSize="3.8">🥤</text>
                 </g>
               ))}
             </svg>

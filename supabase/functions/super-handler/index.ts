@@ -165,6 +165,8 @@ function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
   const iconImage = str(raw.iconImage, 120_000);
   if (iconImage && !ICON_RE.test(iconImage)) return { ok: false, reason: `id「${id}」のアイコン画像の形式が不正です` };
 
+  // 特定原材料8品目のみ受け付ける(自由入力による荒れ・誤表示を防ぐ)
+  const ALLERGEN_SET = new Set(["卵", "乳", "小麦", "そば", "落花生", "えび", "かに", "くるみ"]);
   const products = (Array.isArray(raw.products) ? raw.products : [])
     .filter((p): p is Record<string, unknown> => !!p && typeof p === "object")
     .slice(0, 20)
@@ -173,6 +175,9 @@ function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
       name: str(p.name, 15),
       stock: int(p.stock, 0, 0, 9999),
       soldOut: bool(p.soldOut, false),
+      allergens: (Array.isArray(p.allergens) ? p.allergens : [])
+        .filter((a): a is string => typeof a === "string" && ALLERGEN_SET.has(a))
+        .slice(0, 8),
     }))
     .filter((p) => p.name);
 
@@ -284,18 +289,21 @@ async function dataEtag(): Promise<string> {
 
 async function getPublicData(version?: string) {
   const [settingsResult, boothsResult, stageResult] = await Promise.all([
-    supabase.from("festival_settings").select("festival_name,emergency_notice").eq("id", true).single(),
+    // select("*")にしておくと、掲示板(notices)のマイグレーション未実行でも読取は壊れない
+    supabase.from("festival_settings").select("*").eq("id", true).single(),
     supabase.from("booth_docs").select("doc").order("updated_at", { ascending: false }),
     supabase.from("stage_docs").select("doc").eq("id", true).maybeSingle(),
   ]);
   const error = settingsResult.error ?? boothsResult.error ?? stageResult.error;
   if (error) throw error;
+  const settingsRow = settingsResult.data as Record<string, unknown>;
   return {
     booths: (boothsResult.data ?? []).map((row) => row.doc),
     stage: stageResult.data?.doc ?? null,
     settings: {
-      festivalName: settingsResult.data.festival_name,
-      emergencyNotice: settingsResult.data.emergency_notice,
+      festivalName: settingsRow.festival_name,
+      emergencyNotice: settingsRow.emergency_notice,
+      notices: Array.isArray(settingsRow.notices) ? settingsRow.notices : [],
     },
     version: version ?? await dataEtag(),
     fetchedAt: Date.now(),
@@ -480,18 +488,42 @@ Deno.serve(async (request) => {
     }
 
     if (action === "update_settings") {
-      if (role !== "admin") return respond({ ok: false, error: "全体お知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
+      if (role !== "admin") return respond({ ok: false, error: "お知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
       const patch = body.patch as Record<string, unknown> | undefined;
-      if (!patch || typeof patch.emergencyNotice !== "string") {
+      const hasEmergency = typeof patch?.emergencyNotice === "string";
+      const hasNotices = Array.isArray(patch?.notices);
+      if (!patch || (!hasEmergency && !hasNotices)) {
         return respond({ ok: false, error: "設定データが不正です。", code: "INVALID_PAYLOAD" }, 400);
       }
-      const emergencyNotice = patch.emergencyNotice.trim();
-      if (emergencyNotice.length > 180) {
-        return respond({ ok: false, error: "お知らせは180文字以内にしてください。", code: "NOTICE_TOO_LONG" }, 400);
+
+      if (hasEmergency) {
+        const emergencyNotice = (patch.emergencyNotice as string).trim();
+        if (emergencyNotice.length > 180) {
+          return respond({ ok: false, error: "お知らせは180文字以内にしてください。", code: "NOTICE_TOO_LONG" }, 400);
+        }
+        const { error } = await supabase.rpc("set_emergency_notice", { p_notice: emergencyNotice });
+        if (error) throw error;
+        await audit("update_settings", "emergency_notice", identifier, { length: emergencyNotice.length });
       }
-      const { error } = await supabase.rpc("set_emergency_notice", { p_notice: emergencyNotice });
-      if (error) throw error;
-      await audit("update_settings", "emergency_notice", identifier, { length: emergencyNotice.length });
+
+      if (hasNotices) {
+        // 落とし物・迷子の掲示板。件数・文字数・種別をサーバー側でも制限する。
+        const KINDS = new Set(["lost", "child", "info"]);
+        const notices = (patch.notices as unknown[])
+          .filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
+          .slice(0, 12)
+          .map((n) => ({
+            id: ID_RE.test(str(n.id, 64)) ? str(n.id, 64) : `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            kind: KINDS.has(str(n.kind, 8)) ? str(n.kind, 8) : "info",
+            text: str(n.text, 100).trim(),
+            ts: int(n.ts, Date.now(), 0, 9_999_999_999_999),
+          }))
+          .filter((n) => n.text);
+        const { error } = await supabase.from("festival_settings").update({ notices }).eq("id", true);
+        if (error) throw error;
+        await audit("update_settings", "notices", identifier, { count: notices.length });
+      }
+
       const data = await getPublicData();
       return respond({ ok: true, data: data.settings });
     }
@@ -599,7 +631,7 @@ Deno.serve(async (request) => {
     if (pgCode === "PGRST202" || message.includes("schema cache")) {
       return respond({
         ok: false,
-        error: "データベースが未更新です。Supabase SQL Editorで supabase/migrations/004_operational_hardening.sql を実行してください。",
+        error: "データベースに未実行のマイグレーションがあります。Supabase SQL Editorで supabase/migrations/ のSQLを番号順にすべて実行してください。",
         code: "DB_MIGRATION_REQUIRED",
       }, 500);
     }
