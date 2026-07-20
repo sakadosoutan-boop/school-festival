@@ -45,7 +45,7 @@ jobs:
           if [ -n "$VITE_FESTIVAL_API_URL" ]; then
             case "$VITE_FESTIVAL_API_URL" in
               *'"'*|*"'"*|*' '*)
-                echo "::error::VITE_FESTIVAL_API_URL に引用符または空白が含まれています。URLだけを貼り直してください（例: https://xxxx.supabase.co/functions/v1/festival-admin）。"
+                echo "::error::VITE_FESTIVAL_API_URL に引用符または空白が含まれています。URLだけを貼り直してください（例: https://xxxx.supabase.co/functions/v1/super-handler）。"
                 exit 1;;
               https://*) ;;
               *)

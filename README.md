@@ -53,24 +53,29 @@ PINは4〜8桁。更新用PINが漏れても、全データ入替や復元・PIN
 2. SQL Editorで `supabase/migrations/` の `001_init.sql` → `002_hardening.sql` → `003_v4_model.sql` → `004_operational_hardening.sql` を順に実行(旧スキーマに入力済みデータがあれば003が自動変換します)
 3. Edge Functionを反映
 
-> ⚠️ **Edge Functionのコードとマイグレーションはセットで更新してください。** 現行の `festival-admin` は004で作られるRPC(楽観ロック・原子的レート制限)を呼びます。004未実行のままFunctionだけ更新すると、更新系がすべてエラーになります。また `ALLOWED_ORIGIN` に `*` は設定できません(起動時に拒否されます)。ローカル検証する場合は `https://...github.io,http://localhost:5173` のように明示してください。
+> ⚠️ **Edge Functionのコードとマイグレーションはセットで更新してください。** 現行の `super-handler` は004で作られるRPC(楽観ロック・原子的レート制限)を呼びます。004未実行のままFunctionだけ更新すると、更新系がすべてエラーになります。また `ALLOWED_ORIGIN` に `*` は設定できません(起動時に拒否されます)。ローカル検証する場合は `https://...github.io,http://localhost:5173` のように明示してください。
 
 ```bash
 supabase link --project-ref YOUR_PROJECT_REF
 supabase db push
 # 複数オリジンはカンマ区切り(本番 + ローカル検証など)
 supabase secrets set ALLOWED_ORIGIN=https://YOUR_ACCOUNT.github.io
-supabase functions deploy festival-admin
+supabase functions deploy super-handler
 ```
 
 4. GitHubリポジトリのActions secretsへ設定:
 
 ```env
-VITE_FESTIVAL_API_URL=https://YOUR_PROJECT.supabase.co/functions/v1/festival-admin
+VITE_FESTIVAL_API_URL=https://YOUR_PROJECT.supabase.co/functions/v1/super-handler
 VITE_FESTIVAL_PUBLIC_KEY=YOUR_PUBLISHABLE_KEY
 # 任意: 投票フォーム
 VITE_VOTE_FORM_URL=https://forms.gle/xxxx
+# 任意: SupabaseのPersonal Access Token。設定すると supabase/ 配下の変更がmainに
+# 入るたびに、004適用チェック → Edge Function自動デプロイ → 疎通確認まで実行される
+SUPABASE_ACCESS_TOKEN=sbp_xxxx
 ```
+
+`SUPABASE_ACCESS_TOKEN` を設定した場合、Actionsの「Supabase Backend」が **004未適用ならデプロイを中止**するため、「Functionだけ新しくて書込が全部失敗する」事故を防げます。未設定の間は警告だけ出してスキップします(手動デプロイ運用)。
 
 Secretsが未設定のままだとデプロイは失敗して止まります(誤ってデモモードを本番公開しないため)。意図的にデモを公開する場合だけ、リポジトリ変数 `ALLOW_DEMO_DEPLOY=true` を設定してください。
 
