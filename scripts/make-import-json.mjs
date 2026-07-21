@@ -48,6 +48,9 @@ const stageItem = (raw) => ({
   note: raw.note ?? "",
   canceled: false,
   day: raw.day === 2 ? 2 : 1,
+  emoji: raw.emoji ?? "🎤",
+  iconImage: "",
+  description: raw.description ?? "",
 });
 
 const payload = {

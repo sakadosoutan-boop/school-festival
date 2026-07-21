@@ -82,18 +82,18 @@ export const YANAGI_BOOTHS: RawBooth[] = [
 
 // 体育館当日スケジュール(8/29・8/30)の発表時間。搬入・搬出は含めない。
 export const YANAGI_STAGE_ITEMS: Array<Partial<StageItem> & { id: string }> = [
-  { id: "st1-ongaku", day: 1, title: "音楽部", performer: "音楽部", start: "10:30", end: "11:15" },
-  { id: "st1-guitar", day: 1, title: "ギター部", performer: "ギター部", start: "11:35", end: "12:05" },
-  { id: "st1-suisogaku", day: 1, title: "吹奏楽部", performer: "吹奏楽部", start: "12:30", end: "13:10" },
-  { id: "st1-dance", day: 1, title: "ダンス部", performer: "ダンス部", start: "13:21", end: "14:19" },
-  { id: "st1-skd", day: 1, title: "SKD自慢王×歌王", performer: "文化祭実行委員会", start: "14:30", end: "15:15" },
-  { id: "st2-galan", day: 2, title: "GALAN", performer: "有志バンド", start: "10:28", end: "10:48" },
-  { id: "st2-kujira", day: 2, title: "みなみクジラ", performer: "有志バンド", start: "11:22", end: "11:47" },
-  { id: "st2-crone", day: 2, title: "くろーね", performer: "有志バンド", start: "12:08", end: "12:27" },
-  { id: "st2-moro", day: 2, title: "もろ‼︎‼︎！限定的カイラク", performer: "有志バンド", start: "12:40", end: "12:55" },
-  { id: "st2-hitori", day: 2, title: "ヒトリヨガリ", performer: "有志バンド", start: "13:12", end: "13:35" },
-  { id: "st2-baby", day: 2, title: "Baby Smoker", performer: "有志バンド", start: "14:10", end: "14:30" },
-  { id: "st2-shodo", day: 2, title: "書道ガールズ&ボーイズ", performer: "書道部", start: "14:50", end: "15:00" },
+  { id: "st1-ongaku", emoji: "🎹", day: 1, title: "音楽部", performer: "音楽部", start: "10:30", end: "11:15" },
+  { id: "st1-guitar", emoji: "🎸", day: 1, title: "ギター部", performer: "ギター部", start: "11:35", end: "12:05" },
+  { id: "st1-suisogaku", emoji: "🎺", day: 1, title: "吹奏楽部", performer: "吹奏楽部", start: "12:30", end: "13:10" },
+  { id: "st1-dance", emoji: "💃", day: 1, title: "ダンス部", performer: "ダンス部", start: "13:21", end: "14:19" },
+  { id: "st1-skd", emoji: "👑", day: 1, title: "SKD自慢王×歌王", performer: "文化祭実行委員会", start: "14:30", end: "15:15" },
+  { id: "st2-galan", emoji: "🎸", day: 2, title: "GALAN", performer: "有志バンド", start: "10:28", end: "10:48" },
+  { id: "st2-kujira", emoji: "🐳", day: 2, title: "みなみクジラ", performer: "有志バンド", start: "11:22", end: "11:47" },
+  { id: "st2-crone", emoji: "🎵", day: 2, title: "くろーね", performer: "有志バンド", start: "12:08", end: "12:27" },
+  { id: "st2-moro", emoji: "🔥", day: 2, title: "もろ‼︎‼︎！限定的カイラク", performer: "有志バンド", start: "12:40", end: "12:55" },
+  { id: "st2-hitori", emoji: "🎶", day: 2, title: "ヒトリヨガリ", performer: "有志バンド", start: "13:12", end: "13:35" },
+  { id: "st2-baby", emoji: "🎤", day: 2, title: "Baby Smoker", performer: "有志バンド", start: "14:10", end: "14:30" },
+  { id: "st2-shodo", emoji: "🖌️", day: 2, title: "書道ガールズ&ボーイズ", performer: "書道部", start: "14:50", end: "15:00" },
 ];
 
 export const YANAGI_STAGE_NAME = "体育館ステージ";

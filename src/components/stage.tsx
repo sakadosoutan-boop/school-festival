@@ -1,10 +1,50 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronLeft, Clock, Plus, RefreshCw, Settings, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronLeft, Clock, Plus, RefreshCw, Settings, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
-  itemStatus, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, stageNowNext, THEME, toMin, todayFestivalDay,
+  EMOJI_PALETTE, itemStatus, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, stageNowNext, THEME, toMin, todayFestivalDay,
 } from "../lib/festival";
 import type { StageItem, StageProgram } from "../types";
-import { Confirm, EmptyState, Field, Hint, IconButton, Sheet, TimeStepper } from "./ui";
+import { Confirm, EmptyState, Field, fileToIconDataUrl, Hint, IconButton, Sheet, TimeStepper } from "./ui";
+
+/* ── 公演アイコン: ブースと同じく画像 or 絵文字 ── */
+const StageIcon = ({ item, size = 40, rounded = 12, emojiClass = "text-xl" }: { item: StageItem; size?: number; rounded?: number; emojiClass?: string }) => (
+  item.iconImage
+    ? <img src={item.iconImage} alt={item.title || "icon"} style={{ width: size, height: size, borderRadius: rounded, objectFit: "cover" }} className="flex-shrink-0" />
+    : <span className={emojiClass} style={{ lineHeight: 1 }}>{item.emoji || "🎤"}</span>
+);
+
+/* ── 公演の詳細シート(来場者向け) ── */
+const StageItemDetailSheet = ({ item, refMin, onClose }: { item: StageItem; refMin: number; onClose: () => void }) => {
+  const st = itemStatus(item, refMin);
+  return (
+    <Sheet onClose={onClose} title="公演の詳細">
+      <div className="px-6 pt-2 pb-8">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center overflow-hidden flex-shrink-0 border"
+            style={{ background: "#f3ecff", borderColor: `${THEME.purple}33` }}>
+            <StageIcon item={item} size={80} rounded={22} emojiClass="text-5xl" />
+          </div>
+          <div className="flex-1 min-w-0 pt-1">
+            <div className="text-xs font-semibold text-stone-500 mb-1">{item.day || 1}日目 · {item.start}〜{item.end}</div>
+            <h2 className={`text-2xl font-black tracking-tight mb-1 ${item.canceled ? "line-through text-stone-400" : "text-stone-900"}`}>{item.title || "(無題)"}</h2>
+            {item.performer && <div className="text-sm text-stone-500">{item.performer}</div>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+          {item.canceled ? <span className="text-xs font-black px-2.5 py-1 rounded-full bg-red-100 text-red-600">中止</span>
+            : st === "live" ? <span className="text-xs font-black px-2.5 py-1 rounded-full text-white" style={{ background: THEME.pink }}>● ただいま上演中</span>
+            : st === "done" ? <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-stone-100 text-stone-500">終了</span>
+            : <span className="text-xs font-black px-2.5 py-1 rounded-full" style={{ background: "#f3ecff", color: THEME.purple }}>これから上演</span>}
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600">🎤 体育館ステージ</span>
+        </div>
+        {item.note && <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-900 leading-relaxed">📢 {item.note}</div>}
+        {item.description
+          ? <p className="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap">{item.description}</p>
+          : <p className="text-sm text-stone-400">紹介文はまだ登録されていません</p>}
+      </div>
+    </Sheet>
+  );
+};
 
 /* ═══════════ STAGE — GUEST VIEW ═══════════ */
 
@@ -13,6 +53,7 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
   // 開催当日は自動でその日のタブを開く(それ以外は1日目)
   const [day, setDay] = useState(() => Math.min(todayFestivalDay() ?? 1, program?.days || 1));
   const [mode, setMode] = useState<"grid" | "list">("grid");
+  const [detail, setDetail] = useState<StageItem | null>(null);
   const dayItems = useMemo(
     () => (program ? sortItems(program.items.filter((i) => (i.day || 1) === day)) : []),
     // tickで20秒ごとに再計算し、上演中/終了の表示を時刻に追従させる
@@ -105,7 +146,38 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
         {ModeToggle}
 
         {mode === "grid" ? (
-          <RockinGrid items={items} refMin={ref} />
+          <>
+            <RockinGrid items={items} refMin={ref} onTap={setDetail} />
+            {items.length > 0 && (
+              <div className="mt-5">
+                <div className="text-xs font-bold mb-2" style={{ color: THEME.ink }}>出演団体（タップで紹介を表示）</div>
+                <div className="grid grid-cols-1 gap-2">
+                  {items.map((item) => {
+                    const st = itemStatus(item, ref);
+                    return (
+                      <button key={item.id} onClick={() => setDetail(item)}
+                        className="w-full text-left flex items-center gap-3 p-3 bg-white rounded-2xl border border-stone-200 hover:border-stone-300 active:scale-[0.99] transition-all">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0" style={{ background: "#f3ecff" }}>
+                          <StageIcon item={item} size={40} rounded={12} emojiClass="text-xl" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className={`font-bold truncate text-sm ${item.canceled ? "line-through text-stone-400" : "text-stone-900"}`}>{item.title || "(無題)"}</div>
+                          <div className="text-xs text-stone-500 truncate">{item.performer || "出演者未設定"}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="text-sm font-black tabular-nums" style={{ color: THEME.ink }}>{item.start}</div>
+                          {item.canceled ? <div className="text-[10px] font-black text-red-600">中止</div>
+                            : st === "live" ? <div className="text-[10px] font-black" style={{ color: THEME.pink }}>上演中</div>
+                            : st === "done" ? <div className="text-[10px] font-bold text-stone-400">終了</div>
+                            : <div className="text-[10px] font-bold text-stone-400">〜{item.end}</div>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <>
             <div className="text-xs font-bold mb-2" style={{ color: THEME.ink }}>タイムテーブル（{items.length}公演）</div>
@@ -119,7 +191,9 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
                     <div key={item.id} className="relative">
                       <div className="absolute -left-[13px] top-4 w-3 h-3 rounded-full ring-4 ring-white"
                         style={{ background: dot, boxShadow: st === "live" ? `0 0 0 4px ${THEME.pink}33` : "none" }} />
-                      <div className="rounded-2xl p-3.5 border bg-white transition-all"
+                      <div className="rounded-2xl p-3.5 border bg-white transition-all cursor-pointer active:scale-[0.99]"
+                        onClick={() => setDetail(item)} role="button" tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setDetail(item); } }}
                         style={{
                           borderColor: st === "live" ? `${THEME.pink}66` : "#e7e5e4",
                           opacity: st === "done" || st === "canceled" ? 0.55 : 1,
@@ -129,6 +203,9 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
                           <div className="text-center flex-shrink-0 w-12">
                             <div className="text-sm font-black tabular-nums" style={{ color: THEME.ink }}>{item.start}</div>
                             <div className="text-[10px] text-stone-400 tabular-nums">{item.end}</div>
+                          </div>
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0" style={{ background: "#f3ecff" }}>
+                            <StageIcon item={item} size={36} rounded={8} emojiClass="text-lg" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -154,12 +231,14 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
           ⏱ 自動更新 · 進行状況は時刻から自動判定されます
         </div>
       </main>
+
+      {detail && <StageItemDetailSheet item={detail} refMin={ref} onClose={() => setDetail(null)} />}
     </>
   );
 };
 
 /* ── ロッキン風タイムテーブル(単一ステージ): 時間軸の縦グリッド + ブロック配置 ── */
-const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) => {
+const RockinGrid = ({ items, refMin, onTap }: { items: StageItem[]; refMin: number; onTap: (item: StageItem) => void }) => {
   const PX_PER_MIN = 3.0;
   const TIME_COL = 52;
   const accent = THEME.pink;
@@ -247,7 +326,9 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
               const isLive = status === "live";
               const faded = status === "done" || status === "canceled";
               return (
-                <div key={item.id} className="absolute rounded-xl px-3 py-2 overflow-hidden transition-all"
+                <div key={item.id} className="absolute rounded-xl px-3 py-2 overflow-hidden transition-all cursor-pointer"
+                  onClick={() => onTap(item)} role="button" tabIndex={0}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onTap(item); } }}
                   style={{
                     top: top + 1, left: 8, right: 8, height: h - 2,
                     background: faded ? "#f5f5f4" : isLive ? `${accent}1f` : "#fff",
@@ -257,6 +338,7 @@ const RockinGrid = ({ items, refMin }: { items: StageItem[]; refMin: number }) =
                   }}>
                   <div className="flex items-center gap-1.5 mb-0.5">
                     {isLive && <span className="w-2 h-2 rounded-full flex-shrink-0 animate-pulse" style={{ background: accent }} />}
+                    <span className="flex-shrink-0 flex items-center"><StageIcon item={item} size={15} rounded={4} emojiClass="text-[12px]" /></span>
                     <span className={`text-sm font-black leading-tight truncate ${item.canceled ? "line-through text-stone-400" : ""}`} style={{ color: faded ? "#a8a29e" : THEME.ink }}>{item.title}</span>
                     {isLive && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full text-white flex-shrink-0" style={{ background: accent }}>LIVE</span>}
                     {item.canceled && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 flex-shrink-0">中止</span>}
@@ -387,6 +469,9 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
                     <div className="text-sm font-black tabular-nums" style={{ color: THEME.ink }}>{item.start}</div>
                     <div className="text-[10px] text-stone-400 tabular-nums">{item.end}</div>
                   </div>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0" style={{ background: "#f3ecff" }}>
+                    <StageIcon item={item} size={40} rounded={12} emojiClass="text-xl" />
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className={`font-bold truncate ${item.canceled ? "line-through text-stone-400" : "text-stone-900"}`}>{item.title || "(無題)"}</div>
                     <div className="text-xs text-stone-500 truncate">{item.performer || "出演者未設定"}</div>
@@ -417,13 +502,64 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
 const StageItemEditor = ({ item, isNew, onClose, onSave, onDelete }: { item: StageItem; isNew: boolean; onClose: () => void; onSave: (i: StageItem) => void; onDelete: () => void }) => {
   const [form, setForm] = useState<StageItem>(item || makeStageItem({}));
   const [confirmDel, setConfirmDel] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const set = <K extends keyof StageItem>(k: K, v: StageItem[K]) => setForm((p) => ({ ...p, [k]: v }));
   const bump = (field: "start" | "end", delta: number) => set(field, minToHHMM((toMin(form[field]) ?? 600) + delta));
   const valid = Boolean(form.title.trim()) && toMin(form.start) != null && toMin(form.end) != null && (toMin(form.end) ?? 0) > (toMin(form.start) ?? 0);
 
+  const handleImageFile = (file: File | undefined) => {
+    setUploadError("");
+    if (!file) return;
+    fileToIconDataUrl(file)
+      .then((dataUrl) => set("iconImage", dataUrl))
+      .catch((e: Error) => setUploadError(e.message));
+  };
+
   return (
     <Sheet onClose={onClose} title={isNew ? "公演を追加" : "公演を編集"}>
       <div className="px-5 pb-4 space-y-4 pt-1">
+        <Field label="アイコン">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-4xl flex-shrink-0 border-2 overflow-hidden"
+              style={{ background: "#f3ecff", borderColor: `${THEME.purple}44` }}>
+              {form.iconImage
+                ? <img src={form.iconImage} alt="icon" style={{ width: 64, height: 64, objectFit: "cover" }} />
+                : <span>{form.emoji || "🎤"}</span>}
+            </div>
+            <div className="flex-1 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setEmojiOpen((o) => !o)}
+                className="py-2.5 rounded-xl border border-stone-200 bg-white text-xs font-bold text-stone-700 active:scale-95 flex items-center justify-center gap-1">
+                <Sparkles size={13} strokeWidth={2.4} /> 絵文字
+              </button>
+              <button type="button" onClick={() => fileInputRef.current?.click()}
+                className="py-2.5 rounded-xl border border-stone-200 bg-white text-xs font-bold text-stone-700 active:scale-95 flex items-center justify-center gap-1">
+                <Upload size={13} strokeWidth={2.4} /> 画像
+              </button>
+            </div>
+          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+            onChange={(e) => { handleImageFile(e.target.files?.[0]); e.target.value = ""; }} />
+          {uploadError && <div className="text-xs text-red-600 font-semibold mb-2 flex items-center gap-1"><AlertTriangle size={12} /> {uploadError}</div>}
+          {form.iconImage && (
+            <button type="button" onClick={() => set("iconImage", "")}
+              className="mb-2 w-full py-2 rounded-xl bg-stone-100 text-xs font-bold text-stone-600 active:scale-95 flex items-center justify-center gap-1">
+              <X size={12} strokeWidth={2.5} /> 画像を外して絵文字に戻す
+            </button>
+          )}
+          {emojiOpen && (
+            <div className="mt-1 p-3 bg-white rounded-2xl border border-stone-200 grid grid-cols-8 gap-1 max-h-56 overflow-y-auto">
+              {EMOJI_PALETTE.map((e, i) => (
+                <button key={`${e}-${i}`} type="button"
+                  onClick={() => { set("emoji", e); set("iconImage", ""); setEmojiOpen(false); }}
+                  className={`aspect-square rounded-lg text-2xl flex items-center justify-center active:scale-90 transition-transform ${(!form.iconImage && form.emoji === e) ? "" : "hover:bg-stone-100"}`}
+                  style={(!form.iconImage && form.emoji === e) ? { background: "#f3ecff", boxShadow: "inset 0 0 0 2px #9b5de5" } : {}}
+                >{e}</button>
+              ))}
+            </div>
+          )}
+        </Field>
         <Field label="タイトル" required>
           <input type="text" value={form.title} onChange={(e) => set("title", e.target.value)} maxLength={30}
             className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base font-bold bg-white outline-none focus:border-stone-900" placeholder="例: 吹奏楽部 演奏" />
@@ -431,6 +567,11 @@ const StageItemEditor = ({ item, isNew, onClose, onSave, onDelete }: { item: Sta
         <Field label="出演者・団体">
           <input type="text" value={form.performer} onChange={(e) => set("performer", e.target.value)} maxLength={30}
             className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900" placeholder="例: 吹奏楽部" />
+        </Field>
+        <Field label="紹介文（任意）">
+          <textarea value={form.description} onChange={(e) => set("description", e.target.value)} maxLength={120} rows={3}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900 resize-none leading-relaxed" placeholder="例: 3年間の集大成をお届けします！全4曲、ぜひ最後まで！" />
+          <Hint>来場者が公演をタップすると表示されます（{form.description.length}/120）</Hint>
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="開始時刻" required>
@@ -452,7 +593,7 @@ const StageItemEditor = ({ item, isNew, onClose, onSave, onDelete }: { item: Sta
       <div className="sticky bottom-0 bg-stone-50/95 backdrop-blur-xl border-t border-stone-200 px-5 py-3 flex gap-2" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
         {!isNew && <button onClick={() => setConfirmDel(true)} className="px-4 py-3 rounded-2xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95 flex items-center justify-center" aria-label="削除"><Trash2 size={16} strokeWidth={2.5} /></button>}
         <button onClick={onClose} className="flex-1 px-4 py-3 rounded-2xl border border-stone-200 bg-white text-stone-700 font-bold text-sm active:scale-95">キャンセル</button>
-        <button onClick={() => valid && onSave({ ...form, title: form.title.trim(), performer: form.performer.trim(), note: form.note.trim() })} disabled={!valid}
+        <button onClick={() => valid && onSave({ ...form, title: form.title.trim(), performer: form.performer.trim(), note: form.note.trim(), description: form.description.trim(), emoji: (form.emoji || "🎤").trim() || "🎤" })} disabled={!valid}
           className="flex-1 px-4 py-3 rounded-2xl text-white font-bold text-sm active:scale-95 disabled:opacity-40" style={{ background: valid ? "linear-gradient(135deg,#ff4d8d,#9b5de5)" : "#a8a29e" }}>{isNew ? "追加する" : "保存する"}</button>
       </div>
       {confirmDel && <Confirm title="削除しますか?" message={`「${form.title}」を削除します。`} confirmLabel="削除する" danger onConfirm={() => { onDelete(); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}

@@ -12,7 +12,7 @@ import {
 } from "../lib/festival";
 import { backendConfigured, DEMO_ADMIN_PIN, DEMO_STAFF_PIN } from "../lib/api";
 import type { Booth, FestivalNotice, Product, SnapshotMeta, StaffRole } from "../types";
-import { BoothIcon, Confirm, Field, Hint, IconButton, NumberStepper, QuickPick, Sheet, Wheel } from "./ui";
+import { BoothIcon, Confirm, Field, fileToIconDataUrl, Hint, IconButton, NumberStepper, QuickPick, Sheet, Wheel } from "./ui";
 
 /* ═══════════ STAFF: PIN LOGIN ═══════════ */
 
@@ -171,34 +171,13 @@ export const EditBoothSheet = ({ booth, onClose, onSave, onDelete, isNew }: { bo
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const set = <K extends keyof Booth>(k: K, v: Booth[K]) => setForm((p) => ({ ...p, [k]: v }));
 
-  // 画像を正方形256pxにリサイズ → data URLにしてiconImageへ。容量を抑える。
+  // 画像を正方形256pxにリサイズ → data URLにしてiconImageへ(共通ヘルパー)。
   const handleImageFile = (file: File | undefined) => {
     setUploadError("");
     if (!file) return;
-    if (!file.type.startsWith("image/")) { setUploadError("画像ファイルを選んでください"); return; }
-    if (file.size > 8 * 1024 * 1024) { setUploadError("8MB以下の画像にしてください"); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const S = 256;
-          const canvas = document.createElement("canvas");
-          canvas.width = S; canvas.height = S;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) { setUploadError("画像を処理できませんでした"); return; }
-          const side = Math.min(img.width, img.height);
-          const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
-          ctx.drawImage(img, sx, sy, side, side, 0, 0, S, S);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-          set("iconImage", dataUrl);
-        } catch { setUploadError("画像を処理できませんでした"); }
-      };
-      img.onerror = () => setUploadError("画像を読み込めませんでした");
-      img.src = String(reader.result);
-    };
-    reader.onerror = () => setUploadError("ファイルを読み込めませんでした");
-    reader.readAsDataURL(file);
+    fileToIconDataUrl(file)
+      .then((dataUrl) => set("iconImage", dataUrl))
+      .catch((e: Error) => setUploadError(e.message));
   };
 
   const save = () => {

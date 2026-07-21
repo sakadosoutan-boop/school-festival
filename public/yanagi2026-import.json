@@ -1,7 +1,7 @@
 {
   "app": "まちたいむ",
   "version": 6,
-  "exportedAt": "2026-07-18T11:55:09.774Z",
+  "exportedAt": "2026-07-21T03:47:54.021Z",
   "booths": [
     {
       "id": "c1-1",
@@ -27,7 +27,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -56,7 +56,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -85,7 +85,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -114,7 +114,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -143,7 +143,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -172,7 +172,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -201,7 +201,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -230,7 +230,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -259,7 +259,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -288,7 +288,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -317,7 +317,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -346,7 +346,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -375,7 +375,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -404,7 +404,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -433,7 +433,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -462,7 +462,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -491,7 +491,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -520,7 +520,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -549,7 +549,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -578,7 +578,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -607,7 +607,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -636,7 +636,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -665,7 +665,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -694,7 +694,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -723,7 +723,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -752,7 +752,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -781,7 +781,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -810,7 +810,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -839,7 +839,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -868,7 +868,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -897,7 +897,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -926,7 +926,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -955,7 +955,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -984,7 +984,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1013,7 +1013,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1042,7 +1042,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1071,7 +1071,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1100,7 +1100,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1129,7 +1129,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1158,7 +1158,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1187,7 +1187,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1216,7 +1216,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1245,7 +1245,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784375709774,
+      "lastUpdated": 1784605674021,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1256,7 +1256,7 @@
     "dayLabel": "やなぎ祭ステージ",
     "days": 2,
     "rev": 1,
-    "lastUpdated": 1784375709774,
+    "lastUpdated": 1784605674021,
     "items": [
       {
         "id": "st1-ongaku",
@@ -1266,7 +1266,10 @@
         "end": "11:15",
         "note": "",
         "canceled": false,
-        "day": 1
+        "day": 1,
+        "emoji": "🎹",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st1-guitar",
@@ -1276,7 +1279,10 @@
         "end": "12:05",
         "note": "",
         "canceled": false,
-        "day": 1
+        "day": 1,
+        "emoji": "🎸",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st1-suisogaku",
@@ -1286,7 +1292,10 @@
         "end": "13:10",
         "note": "",
         "canceled": false,
-        "day": 1
+        "day": 1,
+        "emoji": "🎺",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st1-dance",
@@ -1296,7 +1305,10 @@
         "end": "14:19",
         "note": "",
         "canceled": false,
-        "day": 1
+        "day": 1,
+        "emoji": "💃",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st1-skd",
@@ -1306,7 +1318,10 @@
         "end": "15:15",
         "note": "",
         "canceled": false,
-        "day": 1
+        "day": 1,
+        "emoji": "👑",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-galan",
@@ -1316,7 +1331,10 @@
         "end": "10:48",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🎸",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-kujira",
@@ -1326,7 +1344,10 @@
         "end": "11:47",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🐳",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-crone",
@@ -1336,7 +1357,10 @@
         "end": "12:27",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🎵",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-moro",
@@ -1346,7 +1370,10 @@
         "end": "12:55",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🔥",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-hitori",
@@ -1356,7 +1383,10 @@
         "end": "13:35",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🎶",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-baby",
@@ -1366,7 +1396,10 @@
         "end": "14:30",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🎤",
+        "iconImage": "",
+        "description": ""
       },
       {
         "id": "st2-shodo",
@@ -1376,7 +1409,10 @@
         "end": "15:00",
         "note": "",
         "canceled": false,
-        "day": 2
+        "day": 2,
+        "emoji": "🖌️",
+        "iconImage": "",
+        "description": ""
       }
     ]
   }

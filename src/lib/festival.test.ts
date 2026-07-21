@@ -171,3 +171,24 @@ describe("allergens", () => {
     expect(ALLERGENS).toHaveLength(8);
   });
 });
+
+describe("stage item profile (icon / description)", () => {
+  it("defaults emoji to 🎤 and keeps icon/description through makeStageItem", () => {
+    const bare = makeStageItem({ title: "テスト" });
+    expect(bare.emoji).toBe("🎤");
+    expect(bare.iconImage).toBe("");
+    expect(bare.description).toBe("");
+    const rich = makeStageItem({ emoji: "🎸", iconImage: "data:image/jpeg;base64,xx", description: "紹介文" });
+    expect(rich.emoji).toBe("🎸");
+    expect(rich.description).toBe("紹介文");
+  });
+  it("sanitizeStage preserves emoji and description", () => {
+    const program = sanitizeStage({
+      stageName: "体育館ステージ", days: 2, rev: 3, items: [
+        { id: "s1", title: "軽音", performer: "軽音部", start: "10:00", end: "10:30", emoji: "🎸", description: "熱演" },
+      ],
+    });
+    expect(program.items[0]!.emoji).toBe("🎸");
+    expect(program.items[0]!.description).toBe("熱演");
+  });
+});
