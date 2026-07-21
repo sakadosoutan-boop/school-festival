@@ -72,6 +72,7 @@ function AppInner(): React.JSX.Element {
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{ raw: unknown; count: number } | null>(null);
   const [staffStageOpen, setStaffStageOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<SnapshotMeta[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -451,7 +452,7 @@ function AppInner(): React.JSX.Element {
     showToast("バックアップを書き出しました");
   }, [booths, stage, showToast]);
 
-  const importData = useCallback(async (raw: unknown) => {
+  const runImport = useCallback(async (raw: unknown) => {
     const data = raw as { booths?: unknown[]; stage?: unknown };
     const imported = (data.booths || []).map((b) => makeBooth(b, (b as Booth).id));
     setBusy(true);
@@ -464,6 +465,13 @@ function AppInner(): React.JSX.Element {
     setSettingsOpen(false);
     showToast(`${result.data.booths.length}ブースを読み込みました`);
   }, [showToast, staffPin]);
+
+  // 「読み込む」は全ブース・ステージを丸ごと入れ替える破壊的操作。生徒が入力中の
+  // データを誤って消さないよう、必ず確認ダイアログを挟む(実行直前にサーバー側で自動保存)。
+  const importData = useCallback((raw: unknown) => {
+    const data = raw as { booths?: unknown[] };
+    setPendingImport({ raw, count: Array.isArray(data.booths) ? data.booths.length : 0 });
+  }, []);
 
   const resetSeed = useCallback(async () => {
     setConfirmReset(false);
@@ -581,6 +589,16 @@ function AppInner(): React.JSX.Element {
       )}
       {snapshots !== null && <SnapshotSheet snapshots={snapshots} busy={busy} onRestore={(s) => void handleRestore(s)} onClose={() => setSnapshots(null)} />}
       {confirmReset && <Confirm title="初期データに戻しますか?" message="現在の全ブース・ステージを削除し、やなぎ祭の初期データ(43団体)で作り直します。実行前の状態は自動保存されます。" confirmLabel="リセット" danger onConfirm={() => void resetSeed()} onCancel={() => setConfirmReset(false)} />}
+      {pendingImport && (
+        <Confirm
+          title="現在のデータを置き換えますか?"
+          message={`読み込むと、いま登録されている ${booths.length} ブースはすべて削除され、ファイルの ${pendingImport.count} ブースで置き換えられます。生徒が入力したアイコン・紹介文なども消えます。実行直前にサーバーへ自動保存されるため、設定の「保存履歴・復元」から元に戻せます。`}
+          confirmLabel="置き換える"
+          danger
+          onConfirm={() => { const r = pendingImport.raw; setPendingImport(null); void runImport(r); }}
+          onCancel={() => setPendingImport(null)}
+        />
+      )}
 
       {/* HOME (guest) */}
       {view === "home" && (
