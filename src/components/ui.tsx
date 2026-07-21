@@ -40,6 +40,36 @@ export const Pill = ({ children, color = "#78716c", soft = "#f5f5f4", ring = "#e
 );
 
 // ブースアイコン: アップロード画像があれば画像を、なければ絵文字を表示
+/* 画像ファイルを正方形256pxのJPEG data URLへ変換(アイコン用・容量を抑える)。
+   ブース編集とステージ編集で共用する。失敗時は日本語メッセージでreject。 */
+export function fileToIconDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) { reject(new Error("画像ファイルを選んでください")); return; }
+    if (file.size > 8 * 1024 * 1024) { reject(new Error("8MB以下の画像にしてください")); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const S = 256;
+          const canvas = document.createElement("canvas");
+          canvas.width = S; canvas.height = S;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { reject(new Error("画像を処理できませんでした")); return; }
+          const side = Math.min(img.width, img.height);
+          const sx = (img.width - side) / 2, sy = (img.height - side) / 2;
+          ctx.drawImage(img, sx, sy, side, side, 0, 0, S, S);
+          resolve(canvas.toDataURL("image/jpeg", 0.82));
+        } catch { reject(new Error("画像を処理できませんでした")); }
+      };
+      img.onerror = () => reject(new Error("画像を読み込めませんでした"));
+      img.src = String(reader.result);
+    };
+    reader.onerror = () => reject(new Error("ファイルを読み込めませんでした"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export const BoothIcon = ({ booth, size = 56, rounded = 16, emojiClass = "text-4xl" }: { booth: Booth; size?: number; rounded?: number; emojiClass?: string }) => {
   if (booth.iconImage) {
     return (

@@ -58,6 +58,10 @@ export interface StageItem {
   note: string;
   canceled: boolean;
   day: number;
+  // ブースと同様に、団体ごとの見た目と紹介文を編集できる
+  emoji: string;
+  iconImage: string;
+  description: string;
 }
 
 export interface StageProgram {

@@ -255,6 +255,8 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
     const start = str(item.start, 5);
     const end = str(item.end, 5);
     if (!TIME_RE.test(start) || !TIME_RE.test(end)) return { ok: false, reason: `公演「${str(item.title, 30) || "(無題)"}」の時刻はHH:MM形式にしてください` };
+    const iconImage = str(item.iconImage, 120_000);
+    if (iconImage && !ICON_RE.test(iconImage)) return { ok: false, reason: `公演「${str(item.title, 30) || "(無題)"}」のアイコン画像の形式が不正です` };
     items.push({
       id: ID_RE.test(str(item.id, 64)) ? str(item.id, 64) : `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       title: str(item.title, 30),
@@ -264,19 +266,24 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
       note: str(item.note, 40),
       canceled: bool(item.canceled, false),
       day: item.day === 2 ? 2 : 1,
+      emoji: str(item.emoji, 16) || "🎤",
+      iconImage,
+      description: str(item.description, 120),
     });
   }
-  return {
-    ok: true,
-    value: {
-      stageName: str(raw.stageName, 30) || "体育館ステージ",
-      dayLabel: str(raw.dayLabel, 30) || "文化祭ステージ",
-      days: raw.days === 1 ? 1 : 2,
-      rev: int(raw.rev, 0, 0, Number.MAX_SAFE_INTEGER),
-      lastUpdated: Date.now(),
-      items,
-    },
+  const value = {
+    stageName: str(raw.stageName, 30) || "体育館ステージ",
+    dayLabel: str(raw.dayLabel, 30) || "文化祭ステージ",
+    days: raw.days === 1 ? 1 : 2,
+    rev: int(raw.rev, 0, 0, Number.MAX_SAFE_INTEGER),
+    lastUpdated: Date.now(),
+    items,
   };
+  // ステージは全公演で1ドキュメントのため、アイコン画像の合計サイズを制限する
+  if (JSON.stringify(value).length > 600_000) {
+    return { ok: false, reason: "ステージ全体のデータが大きすぎます(アイコン画像を何枚か外してください)" };
+  }
+  return { ok: true, value };
 }
 
 /* ── データ読み出し ── */

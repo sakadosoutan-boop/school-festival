@@ -281,6 +281,7 @@ export const makeStageItem = (partial: Partial<StageItem> = {}): StageItem => ({
   id: partial.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
   title: "", performer: "", start: "10:00", end: "10:20", note: "", canceled: false,
   day: 1,
+  emoji: "🎤", iconImage: "", description: "",
   ...partial,
 });
 
@@ -309,6 +310,9 @@ export const sanitizeStage = (sp: unknown): StageProgram => {
       note: typeof it.note === "string" ? it.note : "",
       canceled: !!it.canceled,
       day: it.day === 2 ? 2 : 1,
+      emoji: typeof it.emoji === "string" && it.emoji ? it.emoji : "🎤",
+      iconImage: typeof it.iconImage === "string" ? it.iconImage : "",
+      description: typeof it.description === "string" ? it.description : "",
     }));
   if (items.length === 0) return seedStage();
   return {
