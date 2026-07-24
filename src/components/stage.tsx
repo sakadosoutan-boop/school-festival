@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, Clock, Plus, RefreshCw, Settings, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
-  EMOJI_PALETTE, itemStatus, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, stageNowNext, THEME, toMin, todayFestivalDay,
+  EMOJI_PALETTE, itemStatus, MAIN_STAGE, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, STAGE_VENUES, stageNowNext, THEME, toMin, todayFestivalDay,
 } from "../lib/festival";
 import type { StageItem, StageProgram } from "../types";
 import { Confirm, EmptyState, Field, fileToIconDataUrl, Hint, IconButton, Sheet, TimeStepper } from "./ui";
@@ -35,7 +35,7 @@ const StageItemDetailSheet = ({ item, refMin, onClose }: { item: StageItem; refM
             : st === "live" ? <span className="text-xs font-black px-2.5 py-1 rounded-full text-white" style={{ background: THEME.pink }}>● ただいま上演中</span>
             : st === "done" ? <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-stone-100 text-stone-500">終了</span>
             : <span className="text-xs font-black px-2.5 py-1 rounded-full" style={{ background: "#f3ecff", color: THEME.purple }}>これから上演</span>}
-          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600">🎤 体育館ステージ</span>
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-stone-100 text-stone-600">🎤 {item.venue || MAIN_STAGE}</span>
         </div>
         {item.note && <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-900 leading-relaxed">📢 {item.note}</div>}
         {item.description
@@ -54,14 +54,27 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
   const [day, setDay] = useState(() => Math.min(todayFestivalDay() ?? 1, program?.days || 1));
   const [mode, setMode] = useState<"grid" | "list">("grid");
   const [detail, setDetail] = useState<StageItem | null>(null);
+
+  // 実際に公演がある会場だけをタブに出す(演劇部・音楽部・放送部などは登録されるまで隠す)。
+  // 体育館ステージは常に先頭。
+  const venueOf = (i: StageItem) => i.venue || MAIN_STAGE;
+  const activeVenues = useMemo(() => {
+    const set = new Set<string>();
+    (program?.items || []).forEach((i) => set.add(venueOf(i)));
+    const list = [...set];
+    return [MAIN_STAGE, ...list.filter((v) => v !== MAIN_STAGE)].filter((v) => set.has(v));
+  }, [program]);
+  const [venue, setVenue] = useState(MAIN_STAGE);
+  const activeVenue = activeVenues.includes(venue) ? venue : (activeVenues[0] ?? MAIN_STAGE);
+
   const dayItems = useMemo(
-    () => (program ? sortItems(program.items.filter((i) => (i.day || 1) === day)) : []),
+    () => (program ? sortItems(program.items.filter((i) => (i.day || 1) === day && venueOf(i) === activeVenue)) : []),
     // tickで20秒ごとに再計算し、上演中/終了の表示を時刻に追従させる
-    [program, day, tick],
+    [program, day, activeVenue, tick],
   );
   const { live, next } = useMemo(
-    () => (program ? stageNowNext(program.items.filter((i) => (i.day || 1) === day)) : { live: null, next: null }),
-    [program, day, tick],
+    () => (program ? stageNowNext(program.items.filter((i) => (i.day || 1) === day && venueOf(i) === activeVenue)) : { live: null, next: null }),
+    [program, day, activeVenue, tick],
   );
   const ref = nowMin();
   const items = dayItems;
@@ -78,6 +91,19 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
           </button>
         );
       })}
+    </div>
+  ) : null;
+
+  // 会場が2つ以上あるときだけ会場切り替えを表示する
+  const VenueTabs = activeVenues.length > 1 ? (
+    <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-3">
+      {activeVenues.map((v) => (
+        <button key={v} onClick={() => setVenue(v)}
+          className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border ${activeVenue === v ? "text-white shadow-sm border-transparent" : "bg-white text-stone-600 border-stone-200"}`}
+          style={activeVenue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
+          {v === MAIN_STAGE ? "🎤 " : "🎭 "}{v}
+        </button>
+      ))}
     </div>
   ) : null;
 
@@ -110,6 +136,7 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
       <StageHeader program={program} />
       <main className="max-w-2xl mx-auto px-4 pt-4">
         {DayTabs}
+        {VenueTabs}
         <div className="rounded-[26px] p-5 mb-4 relative overflow-hidden" style={{ background: THEME.festGradient }}>
           <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle,#fff 1.5px,transparent 1.5px)", backgroundSize: "20px 20px" }} />
           <div className="relative">
@@ -389,10 +416,15 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
   }, [program]);
   const dayCount = draft.days || 1;
   const [day, setDay] = useState(1);
-  const items = useMemo(() => sortItems(draft.items.filter((i) => (i.day || 1) === day)), [draft.items, day]);
+  const venues = draft.venues && draft.venues.length ? draft.venues : STAGE_VENUES;
+  const [venue, setVenue] = useState(MAIN_STAGE);
+  const items = useMemo(
+    () => sortItems(draft.items.filter((i) => (i.day || 1) === day && (i.venue || MAIN_STAGE) === venue)),
+    [draft.items, day, venue],
+  );
 
-  const persist = (nextItems: StageItem[], msg?: string) => {
-    const next = { ...draft, items: nextItems };
+  const persist = (nextItems: StageItem[], nextVenues?: string[], msg?: string) => {
+    const next = { ...draft, items: nextItems, ...(nextVenues ? { venues: nextVenues } : {}) };
     setDraft(next);
     onSave(next);
     if (msg) showToast(msg);
@@ -401,22 +433,25 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
   const saveItem = (item: StageItem) => {
     const exists = draft.items.some((i) => i.id === item.id);
     const nextItems = exists ? draft.items.map((i) => i.id === item.id ? item : i) : [...draft.items, item];
-    persist(nextItems, exists ? "公演を更新しました" : "公演を追加しました");
+    // 新しい会場名が入力されたら、会場一覧にも加える
+    const nextVenues = item.venue && !venues.includes(item.venue) ? [...venues, item.venue] : undefined;
+    persist(nextItems, nextVenues, exists ? "公演を更新しました" : "公演を追加しました");
+    if (nextVenues) setVenue(item.venue);
     setEditItem(null); setCreating(false);
   };
-  const deleteItem = (id: string) => { persist(draft.items.filter((i) => i.id !== id), "公演を削除しました"); setEditItem(null); };
-  const toggleCancel = (item: StageItem) => persist(draft.items.map((i) => i.id === item.id ? { ...i, canceled: !i.canceled } : i), item.canceled ? "中止を解除しました" : "中止にしました");
+  const deleteItem = (id: string) => { persist(draft.items.filter((i) => i.id !== id), undefined, "公演を削除しました"); setEditItem(null); };
+  const toggleCancel = (item: StageItem) => persist(draft.items.map((i) => i.id === item.id ? { ...i, canceled: !i.canceled } : i), undefined, item.canceled ? "中止を解除しました" : "中止にしました");
 
-  // 進行が押しているとき: 表示中の日の、これから始まる公演をまとめてずらす
+  // 進行が押しているとき: 表示中の日・会場の、これから始まる公演をまとめてずらす
   const shiftAll = (delta: number) => {
     const ref = nowMin();
     const nextItems = draft.items.map((i) => {
-      if ((i.day || 1) !== day) return i;
+      if ((i.day || 1) !== day || (i.venue || MAIN_STAGE) !== venue) return i;
       const s = toMin(i.start), e = toMin(i.end);
       if (s == null || s < ref) return i; // 終了・進行済みは動かさない
       return { ...i, start: minToHHMM(s + delta), end: e != null ? minToHHMM(e + delta) : i.end };
     });
-    persist(nextItems, `${day}日目の以降の公演を${delta > 0 ? `${delta}分後ろ` : `${-delta}分前`}にずらしました`);
+    persist(nextItems, undefined, `${venue}・${day}日目の以降の公演を${delta > 0 ? `${delta}分後ろ` : `${-delta}分前`}にずらしました`);
   };
 
   return (
@@ -428,7 +463,7 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
 
       <div className="px-4 pt-5">
         {dayCount > 1 && (
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-3">
             {Array.from({ length: dayCount }).map((_, i) => {
               const d = i + 1;
               return (
@@ -441,6 +476,21 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
             })}
           </div>
         )}
+
+        {/* 会場切り替え。演劇部・音楽部・放送部など、体育館以外の公演もここで管理する */}
+        <div className="mb-1 text-[11px] font-bold text-stone-400">会場を選んで公演を登録できます</div>
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-4">
+          {venues.map((v) => {
+            const count = draft.items.filter((i) => (i.venue || MAIN_STAGE) === v && (i.day || 1) === day).length;
+            return (
+              <button key={v} onClick={() => setVenue(v)}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border ${venue === v ? "text-white border-transparent shadow-sm" : "bg-white text-stone-600 border-stone-200"}`}
+                style={venue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
+                {v === MAIN_STAGE ? "🎤 " : "🎭 "}{v}{count > 0 ? `（${count}）` : ""}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="rounded-2xl p-4 mb-4 border" style={{ background: "#fff7ed", borderColor: "#ff8a3d44" }}>
           <div className="flex items-center gap-2 mb-2.5"><Clock size={16} style={{ color: THEME.orange }} strokeWidth={2.4} /><div className="font-bold text-sm" style={{ color: THEME.ink }}>進行が押している/巻いているとき</div></div>
@@ -456,7 +506,7 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
         <button onClick={() => setCreating(true)}
           className="w-full mb-3 flex items-center gap-3 p-4 bg-white rounded-2xl border-2 border-dashed border-stone-300 hover:border-stone-900 active:scale-[0.99] transition-all text-left">
           <div className="w-11 h-11 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><Plus size={20} className="text-stone-700" strokeWidth={2.5} /></div>
-          <div className="flex-1"><div className="font-bold text-stone-900">公演を追加{dayCount > 1 ? `（${day}日目）` : ""}</div><div className="text-xs text-stone-500">タイトル・時刻・出演者を登録</div></div>
+          <div className="flex-1"><div className="font-bold text-stone-900">公演を追加（{venue}{dayCount > 1 ? `・${day}日目` : ""}）</div><div className="text-xs text-stone-500">タイトル・時刻・出演者を登録</div></div>
         </button>
 
         <div className="space-y-2">
@@ -488,18 +538,23 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
               </div>
             );
           })}
+          {items.length === 0 && (
+            <div className="text-center text-sm text-stone-400 py-8 bg-white rounded-2xl border border-dashed border-stone-200">
+              「{venue}」の{dayCount > 1 ? `${day}日目の` : ""}公演はまだありません。<br />上の「公演を追加」から登録できます。
+            </div>
+          )}
         </div>
       </div>
 
       {(editItem || creating) && (
-        <StageItemEditor item={creating ? makeStageItem({ day }) : editItem!} isNew={creating}
+        <StageItemEditor item={creating ? makeStageItem({ day, venue }) : editItem!} isNew={creating} venues={venues}
           onClose={() => { setEditItem(null); setCreating(false); }} onSave={saveItem} onDelete={() => { if (editItem) deleteItem(editItem.id); }} />
       )}
     </div>
   );
 };
 
-const StageItemEditor = ({ item, isNew, onClose, onSave, onDelete }: { item: StageItem; isNew: boolean; onClose: () => void; onSave: (i: StageItem) => void; onDelete: () => void }) => {
+const StageItemEditor = ({ item, isNew, venues, onClose, onSave, onDelete }: { item: StageItem; isNew: boolean; venues: string[]; onClose: () => void; onSave: (i: StageItem) => void; onDelete: () => void }) => {
   const [form, setForm] = useState<StageItem>(item || makeStageItem({}));
   const [confirmDel, setConfirmDel] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -568,6 +623,12 @@ const StageItemEditor = ({ item, isNew, onClose, onSave, onDelete }: { item: Sta
           <input type="text" value={form.performer} onChange={(e) => set("performer", e.target.value)} maxLength={30}
             className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900" placeholder="例: 吹奏楽部" />
         </Field>
+        <Field label="会場">
+          <input type="text" list="stage-venues" value={form.venue} onChange={(e) => set("venue", e.target.value)} maxLength={30}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900" placeholder="例: 体育館ステージ" />
+          <datalist id="stage-venues">{venues.map((v) => <option key={v} value={v} />)}</datalist>
+          <Hint>体育館ステージのほか、演劇部・音楽部・放送部など会場ごとに登録できます（新しい会場名を入力すると一覧に追加されます）</Hint>
+        </Field>
         <Field label="紹介文（任意）">
           <textarea value={form.description} onChange={(e) => set("description", e.target.value)} maxLength={120} rows={3}
             className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900 resize-none leading-relaxed" placeholder="例: 3年間の集大成をお届けします！全4曲、ぜひ最後まで！" />
@@ -593,7 +654,7 @@ const StageItemEditor = ({ item, isNew, onClose, onSave, onDelete }: { item: Sta
       <div className="sticky bottom-0 bg-stone-50/95 backdrop-blur-xl border-t border-stone-200 px-5 py-3 flex gap-2" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
         {!isNew && <button onClick={() => setConfirmDel(true)} className="px-4 py-3 rounded-2xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95 flex items-center justify-center" aria-label="削除"><Trash2 size={16} strokeWidth={2.5} /></button>}
         <button onClick={onClose} className="flex-1 px-4 py-3 rounded-2xl border border-stone-200 bg-white text-stone-700 font-bold text-sm active:scale-95">キャンセル</button>
-        <button onClick={() => valid && onSave({ ...form, title: form.title.trim(), performer: form.performer.trim(), note: form.note.trim(), description: form.description.trim(), emoji: (form.emoji || "🎤").trim() || "🎤" })} disabled={!valid}
+        <button onClick={() => valid && onSave({ ...form, title: form.title.trim(), performer: form.performer.trim(), note: form.note.trim(), description: form.description.trim(), emoji: (form.emoji || "🎤").trim() || "🎤", venue: (form.venue || MAIN_STAGE).trim() || MAIN_STAGE })} disabled={!valid}
           className="flex-1 px-4 py-3 rounded-2xl text-white font-bold text-sm active:scale-95 disabled:opacity-40" style={{ background: valid ? "linear-gradient(135deg,#ff4d8d,#9b5de5)" : "#a8a29e" }}>{isNew ? "追加する" : "保存する"}</button>
       </div>
       {confirmDel && <Confirm title="削除しますか?" message={`「${form.title}」を削除します。`} confirmLabel="削除する" danger onConfirm={() => { onDelete(); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}

@@ -277,11 +277,16 @@ export const minToHHMM = (min: number): string => {
 };
 export const nowMin = (): number => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 
+// ステージの既定会場。体育館ステージ以外は、後から公演の時間割を追加できるよう用意しておく。
+// (演劇部=視聴覚室・音楽部=音楽室・放送部などの上演会に対応)
+export const MAIN_STAGE = "体育館ステージ";
+export const STAGE_VENUES: string[] = [MAIN_STAGE, "音楽部（音楽室）", "演劇部（視聴覚室）", "放送部"];
+
 export const makeStageItem = (partial: Partial<StageItem> = {}): StageItem => ({
   id: partial.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
   title: "", performer: "", start: "10:00", end: "10:20", note: "", canceled: false,
   day: 1,
-  emoji: "🎤", iconImage: "", description: "",
+  emoji: "🎤", iconImage: "", description: "", venue: MAIN_STAGE,
   ...partial,
 });
 
@@ -293,6 +298,7 @@ export const seedStage = (): StageProgram => ({
   rev: 0,
   lastUpdated: Date.now(),
   items: YANAGI_STAGE_ITEMS.map((item) => makeStageItem(item)),
+  venues: [...STAGE_VENUES],
 });
 
 // 旧バージョン(複数ステージ)のデータを単一ステージ形式に正規化
@@ -313,8 +319,13 @@ export const sanitizeStage = (sp: unknown): StageProgram => {
       emoji: typeof it.emoji === "string" && it.emoji ? it.emoji : "🎤",
       iconImage: typeof it.iconImage === "string" ? it.iconImage : "",
       description: typeof it.description === "string" ? it.description : "",
+      venue: typeof it.venue === "string" && it.venue ? it.venue : MAIN_STAGE,
     }));
   if (items.length === 0) return seedStage();
+  // 会場一覧: 保存された一覧に、実際に使われている会場と既定会場を加えて重複を除く
+  const venueSet = new Set<string>(STAGE_VENUES);
+  if (Array.isArray(source.venues)) source.venues.forEach((v) => { if (typeof v === "string" && v.trim()) venueSet.add(v.trim()); });
+  items.forEach((it) => venueSet.add(it.venue));
   return {
     stageName: typeof source.stageName === "string" ? source.stageName : "体育館ステージ",
     dayLabel: source.dayLabel || "文化祭ステージ",
@@ -322,6 +333,7 @@ export const sanitizeStage = (sp: unknown): StageProgram => {
     rev: typeof source.rev === "number" ? source.rev : 0,
     lastUpdated: typeof source.lastUpdated === "number" ? source.lastUpdated : Date.now(),
     items,
+    venues: [...venueSet].slice(0, 12),
   };
 };
 

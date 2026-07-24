@@ -1,7 +1,7 @@
 {
   "app": "まちたいむ",
   "version": 6,
-  "exportedAt": "2026-07-21T03:47:54.021Z",
+  "exportedAt": "2026-07-24T14:17:31.906Z",
   "booths": [
     {
       "id": "c1-1",
@@ -27,7 +27,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -56,7 +56,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -85,7 +85,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -114,7 +114,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -143,7 +143,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -172,7 +172,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -201,7 +201,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -230,7 +230,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -259,7 +259,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -288,7 +288,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -317,7 +317,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -346,7 +346,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -375,7 +375,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -404,7 +404,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -433,7 +433,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -462,7 +462,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -491,7 +491,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -520,7 +520,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -549,7 +549,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -578,7 +578,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -607,7 +607,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -636,7 +636,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -665,7 +665,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -694,7 +694,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -723,7 +723,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -752,7 +752,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -781,7 +781,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -810,7 +810,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -839,7 +839,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -868,7 +868,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -897,7 +897,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -926,7 +926,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -955,7 +955,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -984,7 +984,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1013,7 +1013,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1042,7 +1042,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1071,7 +1071,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1100,7 +1100,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1129,7 +1129,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1158,7 +1158,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1187,7 +1187,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1216,7 +1216,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1245,7 +1245,7 @@
       "waitMinutes": 0,
       "history": [],
       "cycleHistory": [],
-      "lastUpdated": 1784605674021,
+      "lastUpdated": 1784902651906,
       "lastServedAt": null,
       "undoSnapshot": null,
       "rev": 1
@@ -1256,7 +1256,7 @@
     "dayLabel": "やなぎ祭ステージ",
     "days": 2,
     "rev": 1,
-    "lastUpdated": 1784605674021,
+    "lastUpdated": 1784902651906,
     "items": [
       {
         "id": "st1-ongaku",
@@ -1269,7 +1269,8 @@
         "day": 1,
         "emoji": "🎹",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st1-guitar",
@@ -1282,7 +1283,8 @@
         "day": 1,
         "emoji": "🎸",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st1-suisogaku",
@@ -1295,7 +1297,8 @@
         "day": 1,
         "emoji": "🎺",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st1-dance",
@@ -1308,7 +1311,8 @@
         "day": 1,
         "emoji": "💃",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st1-skd",
@@ -1321,7 +1325,8 @@
         "day": 1,
         "emoji": "👑",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-galan",
@@ -1334,7 +1339,8 @@
         "day": 2,
         "emoji": "🎸",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-kujira",
@@ -1347,7 +1353,8 @@
         "day": 2,
         "emoji": "🐳",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-crone",
@@ -1360,7 +1367,8 @@
         "day": 2,
         "emoji": "🎵",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-moro",
@@ -1373,7 +1381,8 @@
         "day": 2,
         "emoji": "🔥",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-hitori",
@@ -1386,7 +1395,8 @@
         "day": 2,
         "emoji": "🎶",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-baby",
@@ -1399,7 +1409,8 @@
         "day": 2,
         "emoji": "🎤",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       },
       {
         "id": "st2-shodo",
@@ -1412,8 +1423,15 @@
         "day": 2,
         "emoji": "🖌️",
         "iconImage": "",
-        "description": ""
+        "description": "",
+        "venue": "体育館ステージ"
       }
+    ],
+    "venues": [
+      "体育館ステージ",
+      "音楽部（音楽室）",
+      "演劇部（視聴覚室）",
+      "放送部"
     ]
   }
 }

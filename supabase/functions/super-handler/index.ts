@@ -269,8 +269,15 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
       emoji: str(item.emoji, 16) || "🎤",
       iconImage,
       description: str(item.description, 120),
+      venue: str(item.venue, 30) || "体育館ステージ",
     });
   }
+  // 会場一覧: 送られた一覧＋実際に使われている会場を統合し、最大12件・各30文字に制限
+  const venueSet = new Set<string>(["体育館ステージ"]);
+  if (Array.isArray(raw.venues)) {
+    for (const v of raw.venues) { const s = str(v, 30).trim(); if (s) venueSet.add(s); }
+  }
+  for (const it of items) venueSet.add(it.venue as string);
   const value = {
     stageName: str(raw.stageName, 30) || "体育館ステージ",
     dayLabel: str(raw.dayLabel, 30) || "文化祭ステージ",
@@ -278,6 +285,7 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
     rev: int(raw.rev, 0, 0, Number.MAX_SAFE_INTEGER),
     lastUpdated: Date.now(),
     items,
+    venues: [...venueSet].slice(0, 12),
   };
   // ステージは全公演で1ドキュメントのため、アイコン画像の合計サイズを制限する
   if (JSON.stringify(value).length > 600_000) {

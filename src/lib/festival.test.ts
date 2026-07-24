@@ -178,6 +178,7 @@ describe("stage item profile (icon / description)", () => {
     expect(bare.emoji).toBe("🎤");
     expect(bare.iconImage).toBe("");
     expect(bare.description).toBe("");
+    expect(bare.venue).toBe("体育館ステージ");
     const rich = makeStageItem({ emoji: "🎸", iconImage: "data:image/jpeg;base64,xx", description: "紹介文" });
     expect(rich.emoji).toBe("🎸");
     expect(rich.description).toBe("紹介文");
@@ -190,5 +191,26 @@ describe("stage item profile (icon / description)", () => {
     });
     expect(program.items[0]!.emoji).toBe("🎸");
     expect(program.items[0]!.description).toBe("熱演");
+  });
+});
+
+describe("stage venues", () => {
+  it("seedStage exposes the venue list with 体育館ステージ first", () => {
+    const stage = seedStage();
+    expect(stage.venues[0]).toBe("体育館ステージ");
+    expect(stage.venues).toContain("演劇部（視聴覚室）");
+    expect(stage.items.every((i) => i.venue === "体育館ステージ")).toBe(true);
+  });
+  it("sanitizeStage keeps item venue and merges it into the venue list", () => {
+    const program = sanitizeStage({
+      stageName: "体育館ステージ", days: 2, rev: 1, venues: ["体育館ステージ"], items: [
+        { id: "s1", title: "朗読劇", start: "11:00", end: "11:30", venue: "演劇部（視聴覚室）" },
+        { id: "s2", title: "バンド", start: "12:00", end: "12:30" },
+      ],
+    });
+    expect(program.items[0]!.venue).toBe("演劇部（視聴覚室）");
+    expect(program.items[1]!.venue).toBe("体育館ステージ"); // 未指定は既定会場
+    expect(program.venues).toContain("演劇部（視聴覚室）");
+    expect(program.venues[0]).toBe("体育館ステージ");
   });
 });
