@@ -261,46 +261,85 @@ export const Onboarding = ({ onDone }: { onDone: () => void }) => {
 
 /* ═══════════ HELP SHEET ═══════════ */
 
+// 来場者向けQ&A(やなぎ祭マニュアル第1部・第2部の内容に基づく)
+const GUEST_FAQS = [
+  { q: "開催日と時間は？", a: "8月29日(土)・30日(日)の2日間、午前10時〜午後4時です。校舎への入場は15:30まで、各ステージ発表は15:20ごろまでです。" },
+  { q: "待ち時間や混雑はどこで見られる？", a: "このアプリのホームで、各企画の待ち時間・混雑・売り切れがリアルタイムに分かります。上の「⚡すぐ入れる」で空いている企画だけを絞り込めます。マップタブで場所も確認できます。" },
+  { q: "どんな企画があるの？", a: "各クラスの体験・ゲーム・お化け屋敷、食品販売、部活動の展示・発表、体育館ステージでの音楽・ダンス発表、グラウンドでの招待試合(野球部・ハンドボール部)などがあります。" },
+  { q: "ステージ発表は何時から？", a: "体育館ステージは両日とも10:30〜15:20ごろに発表があります。ステージタブでタイムテーブルと「まもなく開演」を確認できます。演劇部・音楽部・放送部などの公演も、決まり次第ステージタブに追加されます。" },
+  { q: "食べ物は買える？食べ歩きはできる？", a: "食品販売のクラスがあります(個包装の市販食品が中心です)。食べ歩きはできません。「かえる広場」のイートインスペースや、各団体が案内する飲食エリアでお召し上がりください。" },
+  { q: "アレルギーが心配です", a: "商品にアレルギー表示(卵・乳・小麦など特定原材料8品目・目安)が付く場合は、ブースの詳細画面で確認できます。表示はあくまで目安のため、召し上がる前に必ず各ブースの掲示・スタッフにご確認ください。" },
+  { q: "落とし物・迷子になったら？", a: "ホームの「お知らせ掲示板」に情報を掲示します。見つからないときは、受付や近くのスタッフ、運営本部へお声がけください。けが・体調不良のときは保健室(救護)へ。" },
+  { q: "トイレや休憩場所は？", a: "トイレは各校舎にあります。マップタブでおおよその位置を確認できます。飲食はイートインスペース(かえる広場)などをご利用ください。" },
+  { q: "写真撮影・SNSは？", a: "撮影は可能ですが、他の来場者や生徒が写り込んだ写真のSNS公開はご配慮ください。各企画で撮影をお断りしている場合は、スタッフの案内に従ってください。" },
+  { q: "アプリの表示がおかしい・最新にならない", a: "一度ページを再読み込みしてください(パソコンは Ctrl+F5)。ホーム画面に追加している場合は、一度閉じて開き直すと最新になります。" },
+];
+
+const STAFF_FAQS = [
+  { q: "PINを忘れた / 知らない", a: "ブース班長か実行委員に確認してください。お客さんとして見るだけなら「ホーム」タブでPINなしで閲覧できます。全体管理(お知らせ・復元・PIN変更)は管理者PINが必要です。" },
+  { q: "待ち時間が0分なのに行列がある", a: "そのブースの担当者が人数を入力していません。スタッフモードから列の人数を入力してください。" },
+  { q: "情報が古いと表示される", a: `${STALE_MINUTES}分以上更新がないと「更新待ち」、${VERY_STALE_MINUTES}分以上で数字が隠れます。担当者がアプリを開いて操作すれば自動で新しくなります。` },
+  { q: "「ご案内しました」を押し間違えた", a: "1分以内なら、ボタンのすぐ下に「取り消す」が出ます。それを押せば元に戻ります。" },
+  { q: "ステージ発表の時間割を追加したい", a: "スタッフ→ステージ進行を管理→会場を選んで「公演を追加」。体育館ステージのほか、演劇部・音楽部・放送部など会場ごとに登録できます(新しい会場名を入力すると一覧に追加されます)。" },
+  { q: "2人で同じブースを操作したい", a: "同時更新による上書きは防止され、競合時は最新情報の再読込を案内します。混乱を防ぐため、通常は1ブース1端末を推奨します。" },
+  { q: "電波が悪くて更新できない", a: "更新は端末に保留され、電波が戻ると自動で送信されます。画面上部にオフライン表示が出ている間は、紙やホワイトボードの掲示も併用してください。" },
+  { q: "データが消えないか心配", a: "各ブースは別々に保存されるので、他のブースの操作で消えることはありません。設定画面からバックアップ(書き出し)ができ、管理者はサーバー側のスナップショットからワンタップで復元できます。" },
+  { q: "ホーム画面に追加するには", a: "iPhone(Safari)は共有ボタン→「ホーム画面に追加」。Android(Chrome)はメニュー→「ホーム画面に追加」。" },
+  { q: "表示がおかしい・最新にならない", a: "新しいバージョンは自動で取り込まれますが、直らない場合はページを再読み込みしてください(PCはCtrl+F5)。それでも直らなければ、下のビルド日時を添えて実行委員へ連絡してください。" },
+];
+
 export const HelpSheet = ({ onClose }: { onClose: () => void }) => {
-  const [open, setOpen] = useState(0);
-  const faqs = [
-    { q: "PINを忘れた / 知らない", a: "ブース班長か実行委員に確認してください。お客さんとして見るだけなら「ホーム」タブでPINなしで閲覧できます。全体管理(お知らせ・復元・PIN変更)は管理者PINが必要です。" },
-    { q: "待ち時間が0分なのに行列がある", a: "そのブースの担当者が人数を入力していません。スタッフモードから列の人数を入力してください。" },
-    { q: "情報が古いと表示される", a: `${STALE_MINUTES}分以上更新がないと「更新待ち」、${VERY_STALE_MINUTES}分以上で数字が隠れます。担当者がアプリを開いて操作すれば自動で新しくなります。` },
-    { q: "「ご案内しました」を押し間違えた", a: "1分以内なら、ボタンのすぐ下に「取り消す」が出ます。それを押せば元に戻ります。" },
-    { q: "2人で同じブースを操作したい", a: "同時更新による上書きは防止され、競合時は最新情報の再読込を案内します。混乱を防ぐため、通常は1ブース1端末を推奨します。" },
-    { q: "電波が悪くて更新できない", a: "更新は端末に保留され、電波が戻ると自動で送信されます。画面上部にオフライン表示が出ている間は、紙やホワイトボードの掲示も併用してください。" },
-    { q: "データが消えないか心配", a: "各ブースは別々に保存されるので、他のブースの操作で消えることはありません。設定画面からバックアップ(書き出し)ができ、管理者はサーバー側のスナップショットからワンタップで復元できます。" },
-    { q: "ホーム画面に追加するには", a: "iPhone(Safari)は共有ボタン→「ホーム画面に追加」。Android(Chrome)はメニュー→「ホーム画面に追加」。" },
-    { q: "表示がおかしい・最新にならない", a: "新しいバージョンは自動で取り込まれますが、直らない場合はページを再読み込みしてください(PCはCtrl+F5)。それでも直らなければ、下のビルド日時を添えて実行委員へ連絡してください。" },
-  ];
+  const [tab, setTab] = useState<"guest" | "staff">("guest");
+  const [open, setOpen] = useState<string | null>(null);
+  const faqs = tab === "guest" ? GUEST_FAQS : STAFF_FAQS;
   return (
-    <Sheet onClose={onClose} title="ヘルプ・使い方">
+    <Sheet onClose={onClose} title="よくある質問・使い方">
       <div className="px-5 pb-8 pt-2">
-        <div className="rounded-2xl bg-indigo-50 border border-indigo-200 p-4 mb-4">
-          <div className="flex items-center gap-2 mb-1"><BookOpen size={16} className="text-indigo-600" strokeWidth={2.4} /><span className="font-bold text-indigo-900 text-sm">かんたん3ステップ(スタッフ)</span></div>
-          <ol className="text-xs text-indigo-900 space-y-1 mt-2 list-decimal list-inside leading-relaxed">
-            <li>「スタッフ」タブ → PINを入力</li>
-            <li>担当ブースを選んで「運用する」</li>
-            <li>お客さんを案内したら「ご案内しました」を押すだけ</li>
-          </ol>
+        <div className="flex items-center gap-1 p-1 bg-white rounded-full border border-stone-200 mb-4 w-full">
+          {([{ id: "guest", label: "🙋 来場者の方へ" }, { id: "staff", label: "🛠 スタッフの方へ" }] as const).map((t) => (
+            <button key={t.id} onClick={() => { setTab(t.id); setOpen(null); }}
+              className={`flex-1 py-2 rounded-full text-xs font-black transition-all ${tab === t.id ? "text-white" : "text-stone-500"}`}
+              style={tab === t.id ? { background: "linear-gradient(135deg,#ff4d8d,#9b5de5)" } : {}}>
+              {t.label}
+            </button>
+          ))}
         </div>
-        {!backendConfigured && (
+
+        {tab === "staff" && (
+          <div className="rounded-2xl bg-indigo-50 border border-indigo-200 p-4 mb-4">
+            <div className="flex items-center gap-2 mb-1"><BookOpen size={16} className="text-indigo-600" strokeWidth={2.4} /><span className="font-bold text-indigo-900 text-sm">かんたん3ステップ(スタッフ)</span></div>
+            <ol className="text-xs text-indigo-900 space-y-1 mt-2 list-decimal list-inside leading-relaxed">
+              <li>「スタッフ」タブ → PINを入力</li>
+              <li>担当ブースを選んで「運用する」</li>
+              <li>お客さんを案内したら「ご案内しました」を押すだけ</li>
+            </ol>
+          </div>
+        )}
+        {tab === "guest" && (
+          <div className="rounded-2xl p-4 mb-4 text-white" style={{ background: "linear-gradient(120deg,#3ddc97,#4cc9f0)" }}>
+            <div className="font-black text-sm mb-0.5">🌿 第53回 やなぎ祭へようこそ！</div>
+            <div className="text-xs font-bold text-white/90 leading-relaxed">8/29(土)・30(日) 10:00〜16:00。待ち時間・混雑・売り切れをホームで確認して、楽しい1日を！</div>
+          </div>
+        )}
+        {tab === "staff" && !backendConfigured && (
           <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 mb-4 text-xs text-amber-900 leading-relaxed">
             <strong className="font-bold">デモモードで動作中：</strong>データはこの端末の中だけに保存されます。初期PINは 更新用 <span className="font-mono font-black">{DEMO_STAFF_PIN}</span> / 管理者 <span className="font-mono font-black">{DEMO_ADMIN_PIN}</span> です。
           </div>
         )}
         <div className="space-y-2">
-          {faqs.map((f, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-              <button onClick={() => setOpen(open === i ? -1 : i)} className="w-full flex items-center gap-2 p-4 text-left active:bg-stone-50">
-                <HelpCircle size={16} className="text-stone-400 flex-shrink-0" strokeWidth={2.2} />
-                <span className="flex-1 font-bold text-stone-900 text-sm">{f.q}</span>
-                <ChevronRight size={16} className={`text-stone-300 transition-transform ${open === i ? "rotate-90" : ""}`} />
-              </button>
-              {open === i && <div className="px-4 pb-4 text-sm text-stone-600 leading-relaxed">{f.a}</div>}
-            </div>
-          ))}
+          {faqs.map((f) => {
+            const key = `${tab}-${f.q}`;
+            return (
+              <div key={key} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+                <button onClick={() => setOpen(open === key ? null : key)} className="w-full flex items-center gap-2 p-4 text-left active:bg-stone-50">
+                  <HelpCircle size={16} className="text-stone-400 flex-shrink-0" strokeWidth={2.2} />
+                  <span className="flex-1 font-bold text-stone-900 text-sm">{f.q}</span>
+                  <ChevronRight size={16} className={`text-stone-300 transition-transform ${open === key ? "rotate-90" : ""}`} />
+                </button>
+                {open === key && <div className="px-4 pb-4 text-sm text-stone-600 leading-relaxed">{f.a}</div>}
+              </div>
+            );
+          })}
         </div>
         <div className="text-center text-[11px] text-stone-400 mt-4">ビルド {__BUILD_ID__}</div>
       </div>

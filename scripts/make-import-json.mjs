@@ -51,6 +51,7 @@ const stageItem = (raw) => ({
   emoji: raw.emoji ?? "🎤",
   iconImage: "",
   description: raw.description ?? "",
+  venue: raw.venue ?? "体育館ステージ",
 });
 
 const payload = {
@@ -65,6 +66,8 @@ const payload = {
     rev: 1,
     lastUpdated: now,
     items: YANAGI_STAGE_ITEMS.map(stageItem),
+    // 演劇部・音楽部・放送部の公演は、後から会場を選んで追加できる
+    venues: ["体育館ステージ", "音楽部（音楽室）", "演劇部（視聴覚室）", "放送部"],
   },
 };
 

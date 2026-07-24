@@ -62,6 +62,8 @@ export interface StageItem {
   emoji: string;
   iconImage: string;
   description: string;
+  // 会場(体育館ステージ / 演劇部 / 音楽部 / 放送部 など)。空なら体育館ステージ扱い
+  venue: string;
 }
 
 export interface StageProgram {
@@ -71,6 +73,8 @@ export interface StageProgram {
   rev: number;
   lastUpdated: number;
   items: StageItem[];
+  // 選択できる会場の一覧。演劇部・音楽部・放送部などの公演を後から追加できる
+  venues: string[];
 }
 
 // 落とし物・迷子などの掲示板(全体お知らせより軽い情報)

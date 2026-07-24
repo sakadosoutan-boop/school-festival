@@ -718,13 +718,13 @@ function AppInner(): React.JSX.Element {
                   <div className="flex-1 min-w-0">
                     {stageNow.live ? (
                       <>
-                        <div className="text-white/90 text-[11px] font-black flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> ステージ上演中</div>
+                        <div className="text-white/90 text-[11px] font-black flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" /> 上演中 · {stageNow.live.venue || "体育館ステージ"}</div>
                         <div className="text-white font-black text-base leading-tight truncate">{stageNow.live.title}</div>
                         <div className="text-white/90 text-xs font-bold mt-0.5">〜{stageNow.live.end} · タップでタイムテーブルへ →</div>
                       </>
                     ) : stageNow.next ? (
                       <>
-                        <div className="text-white/90 text-[11px] font-black">🎬 まもなくステージ開演</div>
+                        <div className="text-white/90 text-[11px] font-black">🎬 まもなく開演 · {stageNow.next.venue || "体育館ステージ"}</div>
                         <div className="text-white font-black text-base leading-tight truncate">{stageNow.next.title}</div>
                         <div className="text-white/90 text-xs font-bold mt-0.5">{stageNow.next.start} 開演 · タップでタイムテーブルへ →</div>
                       </>
