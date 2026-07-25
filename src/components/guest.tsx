@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, BookOpen, ChevronRight, Heart, HelpCircle, Info, MapPin, Minus as MinusIcon, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, BookOpen, ChevronRight, Heart, HelpCircle, Info, MapPin, Minus as MinusIcon, TrendingDown, TrendingUp, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   accentFor, allSoldOut, CATEGORIES, computeTrend, formatLocation, formatOrganizer, formatRelative,
   freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, VERY_STALE_MINUTES,
 } from "../lib/festival";
+import { isKidsFriendly, summarizeWaitHistory } from "../lib/guest-helpers";
 import { DEMO_ADMIN_PIN, DEMO_STAFF_PIN, backendConfigured } from "../lib/api";
 import type { Booth } from "../types";
 import { BoothIcon, Pill, Sheet, Sparkline, StaleBadge, WaitChart } from "./ui";
@@ -12,7 +13,22 @@ import logoSrc from "../assets/logo.png";
 
 /* ═══════════ GUEST: BOOTH CARD ═══════════ */
 
-export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { booth: Booth; onTap: (b: Booth) => void; isFavorite: boolean; onToggleFavorite: (id: string) => void }) => {
+// 小さなお子さま向けの企画であることを、カードにも詳細にも同じ見た目で示す
+const KidsBadge = ({ short }: { short?: boolean }) => (
+  <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[11px] font-black rounded-full border"
+    style={{ color: "#0e7490", backgroundColor: "#ecfeff", borderColor: "#a5f3fc" }}>
+    👶 {short ? "お子さま向け" : "小さなお子さま向け"}
+  </span>
+);
+
+// オフライン中は「いま取れている値」ではないことを、カード単位でも分かるようにする
+const CachedBadge = () => (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] font-bold rounded-full bg-stone-100 text-stone-500 border border-stone-200">
+    <WifiOff size={10} strokeWidth={2.6} />最後の情報
+  </span>
+);
+
+export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite, compact, offline }: { booth: Booth; onTap: (b: Booth) => void; isFavorite: boolean; onToggleFavorite: (id: string) => void; compact?: boolean; offline?: boolean }) => {
   const f = freshness(booth);
   const showNumber = booth.isOpen && f !== "very_stale";
   const status = getStatus(booth.waitMinutes, booth.isOpen);
@@ -20,12 +36,75 @@ export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { boot
   const TrendIcon: LucideIcon = trend.dir === "up" ? TrendingUp : trend.dir === "down" ? TrendingDown : MinusIcon;
   const trendColor = trend.dir === "up" ? "#e6206b" : trend.dir === "down" ? "#3ddc97" : "#a8a29e";
   const accent = accentFor(booth.id);
+  const soldOut = allSoldOut(booth);
+  const kids = isKidsFriendly(booth);
+
+  /* ── コンパクト表示: 1行カード。1画面に5〜6件入るようにする ── */
+  if (compact) {
+    const marks = soldOut || kids || offline || f !== "fresh";
+    return (
+      <article
+        className="group relative w-full rounded-2xl transition-all active:scale-[0.99] hover:-translate-y-0.5 cursor-pointer overflow-hidden"
+        style={{ background: "var(--surface)", boxShadow: `0 1px 0 ${accent}22, 0 4px 12px ${accent}14`, border: `2px solid ${accent}33` }}
+      >
+        <button
+          type="button"
+          onClick={() => onTap(booth)}
+          aria-label={`${booth.name}の詳細を見る`}
+          className="absolute inset-0 z-0 rounded-2xl focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-pink-500/50 focus-visible:ring-inset"
+        />
+        <div className="relative z-[1] flex items-center gap-2.5 px-2.5 py-2 pointer-events-none">
+          <div className="flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center overflow-hidden"
+            style={{ background: `linear-gradient(135deg, ${accent}22, ${accent}0f)`, border: `1.5px solid ${accent}33` }}>
+            <BoothIcon booth={booth} size={48} rounded={10} emojiClass="text-2xl" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[14px] font-extrabold leading-tight line-clamp-2" style={{ color: "var(--ink)" }}>{booth.name}</h3>
+            <div className="text-xs text-stone-500 truncate font-medium">{formatLocation(booth)} · {formatOrganizer(booth)}</div>
+            {marks && (
+              <div className="flex items-center gap-1 flex-wrap mt-1">
+                {/* 1行に収めるため、コンパクト表示のバッジは小さめで揃える */}
+                {soldOut && (
+                  <span className="inline-flex items-center px-2 py-0.5 text-[11px] font-black rounded-full border"
+                    style={{ color: "#dc2626", backgroundColor: "#fee2e2", borderColor: "#fecaca" }}>完売</span>
+                )}
+                {kids && <KidsBadge short />}
+                <StaleBadge booth={booth} />
+                {offline && <CachedBadge />}
+              </div>
+            )}
+          </div>
+          <div className="flex-shrink-0 w-[52px] text-right">
+            {showNumber ? (
+              <>
+                <div className="text-[26px] font-black tabular-nums leading-none" style={{ color: status.color, letterSpacing: "-0.04em" }}>{booth.waitMinutes}</div>
+                <div className="text-[11px] font-bold text-stone-400 mt-0.5">分待ち</div>
+              </>
+            ) : booth.isOpen ? (
+              <div className="text-xs font-black" style={{ color: THEME.orange }}>確認中…</div>
+            ) : (
+              <div className="text-xs font-black text-stone-400">準備中</div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => onToggleFavorite(booth.id)}
+            className="pointer-events-auto relative z-10 flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center hover:scale-110 transition-transform before:content-[''] before:absolute before:-inset-1"
+            aria-label={`${booth.name}を${isFavorite ? "お気に入りから外す" : "お気に入りに追加"}`}
+            aria-pressed={isFavorite}
+          >
+            <Heart size={16} fill={isFavorite ? "#ff4d8d" : "none"} stroke={isFavorite ? "#ff4d8d" : "#c4b5cf"} strokeWidth={2.4} />
+          </button>
+        </div>
+      </article>
+    );
+  }
 
   return (
     <article
       className="group relative w-full text-left rounded-[26px] p-5 transition-all active:scale-[0.98] hover:-translate-y-1 cursor-pointer overflow-hidden anim-pop"
       style={{
-        background: "#ffffff",
+        background: "var(--surface)",
         boxShadow: `0 2px 0 ${accent}22, 0 10px 24px ${accent}1f`,
         border: `2px solid ${accent}33`,
       }}
@@ -55,12 +134,15 @@ export const BoothCard = ({ booth, onTap, isFavorite, onToggleFavorite }: { boot
           <BoothIcon booth={booth} size={64} rounded={14} emojiClass="text-4xl" />
         </div>
         <div className="flex-1 min-w-0 pr-9">
-          <h3 className="text-[17px] font-extrabold truncate mb-0.5" style={{ color: THEME.ink }}>{booth.name}</h3>
+          <h3 className="text-[17px] font-extrabold truncate mb-0.5" style={{ color: "var(--ink)" }}>{booth.name}</h3>
           <div className="text-xs text-stone-500 truncate mb-2 font-medium">{formatOrganizer(booth)} · {formatLocation(booth)}</div>
           <div className="flex items-center gap-1.5 flex-wrap">
-            <Pill color={status.color} soft={status.soft} ring={status.ring}>{status.label}</Pill>
-            {allSoldOut(booth) && <Pill color="#dc2626" soft="#fee2e2" ring="#fecaca">完売</Pill>}
+            {/* 「準備中」は下の大きな文字で示すため、ここでは営業中の状態だけをピルで出す(二重表示の解消) */}
+            {booth.isOpen && <Pill color={status.color} soft={status.soft} ring={status.ring}>{status.label}</Pill>}
+            {soldOut && <Pill color="#dc2626" soft="#fee2e2" ring="#fecaca">完売</Pill>}
+            {kids && <KidsBadge />}
             <StaleBadge booth={booth} />
+            {offline && <CachedBadge />}
           </div>
         </div>
       </div>
@@ -106,11 +188,13 @@ const InfoRow = ({ icon: Icon, label, value, multiline }: { icon: LucideIcon; la
   </div>
 );
 
-export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite }: { booth: Booth; onClose: () => void; isFavorite: boolean; onToggleFavorite: (id: string) => void }) => {
+export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite, onShowOnMap, offline }: { booth: Booth; onClose: () => void; isFavorite: boolean; onToggleFavorite: (id: string) => void; onShowOnMap?: (booth: Booth) => void; offline?: boolean }) => {
   const f = freshness(booth);
   const showNumber = booth.isOpen && f !== "very_stale";
   const status = getStatus(booth.waitMinutes, booth.isOpen);
   const recent = useMemo(() => (booth.history || []).slice(-20), [booth.history]);
+  const waitSummary = useMemo(() => summarizeWaitHistory(recent), [recent]);
+  const kids = isKidsFriendly(booth);
 
   // このブースへ直接飛べるURL(QRポスターやSNS共有用)
   const [copied, setCopied] = useState(false);
@@ -134,6 +218,7 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
             <div className="text-xs font-semibold text-stone-500 mb-1">{CATEGORIES.find((c) => c.id === booth.category)?.label}</div>
             <h2 className="text-2xl font-black text-stone-900 mb-1 tracking-tight">{booth.name}</h2>
             <div className="text-sm text-stone-500">{formatOrganizer(booth)}</div>
+            {kids && <div className="mt-1.5"><KidsBadge /></div>}
           </div>
           <button onClick={() => onToggleFavorite(booth.id)} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-stone-100" aria-label="お気に入り">
             <Heart size={20} fill={isFavorite ? "#dc2626" : "none"} stroke={isFavorite ? "#dc2626" : "#a8a29e"} strokeWidth={2} />
@@ -151,9 +236,13 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
         )}
 
         <div className="rounded-3xl p-6 mb-5" style={{ backgroundColor: status.soft, border: `1px solid ${status.ring}` }}>
-          <div className="flex items-center justify-between mb-2">
-            <Pill color={status.color} soft="#ffffff" ring={status.ring}>{status.label}</Pill>
-            <div className="text-xs text-stone-500">更新: {formatRelative(booth.lastUpdated)}</div>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            {/* 準備中は下の大きな文字だけで示す(ピルと重ねて2回書かない) */}
+            {booth.isOpen ? <Pill color={status.color} soft="#ffffff" ring={status.ring}>{status.label}</Pill> : <span />}
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {offline && <CachedBadge />}
+              <div className="text-xs text-stone-500">更新: {formatRelative(booth.lastUpdated)}</div>
+            </div>
           </div>
           {showNumber ? (
             <div className="flex items-baseline gap-2">
@@ -172,8 +261,25 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
 
         {recent.length >= 2 && (
           <div className="rounded-2xl p-4 mb-5 bg-white border border-stone-200">
-            <div className="text-xs font-semibold text-stone-500 mb-2">▼ 待ち時間の推移</div>
+            <div className="flex items-baseline justify-between gap-2 mb-2">
+              <div className="text-xs font-semibold text-stone-500">▼ 待ち時間の推移</div>
+              {waitSummary && (
+                <div className="text-[10px] font-bold text-stone-400 tabular-nums flex-shrink-0">
+                  最短{waitSummary.min}分 / 最長{waitSummary.max}分
+                </div>
+              )}
+            </div>
             <div className="h-24"><WaitChart history={recent} color={status.color} /></div>
+            <div className="flex items-center justify-between text-[10px] font-bold text-stone-400 mt-1">
+              <span>{waitSummary?.startLabel ?? ""}</span>
+              <span>→</span>
+              <span>現在</span>
+            </div>
+            {waitSummary && (
+              <div className="mt-2.5 rounded-xl px-3 py-2 text-xs font-black" style={{ backgroundColor: status.soft, color: status.color }}>
+                {waitSummary.sentence}
+              </div>
+            )}
           </div>
         )}
 
@@ -204,7 +310,22 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite 
         )}
 
         <div className="space-y-2.5">
-          <InfoRow icon={MapPin} label="場所" value={formatLocation(booth)} />
+          {onShowOnMap ? (
+            /* 場所は文字だけだと辿り着けない。タップでマップへ飛べるようにする */
+            <button type="button" onClick={() => onShowOnMap(booth)}
+              className="w-full flex gap-3 items-center text-left rounded-2xl bg-white border border-stone-200 p-2.5 active:scale-[0.99] transition-transform">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${THEME.purple}1a` }}>
+                <MapPin size={16} strokeWidth={2.2} style={{ color: THEME.purple }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-stone-500 mb-0.5">場所</div>
+                <div className="text-sm text-stone-900 truncate">{formatLocation(booth) || "—"}</div>
+              </div>
+              <span className="text-xs font-black flex-shrink-0" style={{ color: THEME.purple }}>マップで見る →</span>
+            </button>
+          ) : (
+            <InfoRow icon={MapPin} label="場所" value={formatLocation(booth)} />
+          )}
           <InfoRow icon={Info} label="紹介" value={booth.description} multiline />
         </div>
 
@@ -235,7 +356,7 @@ export const Onboarding = ({ onDone }: { onDone: () => void }) => {
         {step === 0
           ? <img src={logoSrc} alt="まちたいむ" className="w-64 max-w-[80%] mb-6" style={{ animation: "bounceIn 0.5s" }} />
           : <div className="text-8xl mb-8" style={{ animation: "bounceIn 0.5s" }}>{s.emoji}</div>}
-        <h2 className="text-3xl font-black mb-3 tracking-tight" style={{ color: THEME.ink }}>{s.title}</h2>
+        <h2 className="text-3xl font-black mb-3 tracking-tight" style={{ color: "var(--ink)" }}>{s.title}</h2>
         <p className="text-sm text-stone-600 leading-relaxed max-w-xs font-medium">{s.body}</p>
       </div>
       <div className="px-8 pb-10">
@@ -246,7 +367,7 @@ export const Onboarding = ({ onDone }: { onDone: () => void }) => {
         </div>
         <div className="flex gap-2">
           {step > 0 && (
-            <button onClick={() => setStep(step - 1)} className="px-5 py-3.5 rounded-2xl border-2 bg-white font-bold text-sm active:scale-95" style={{ color: THEME.ink, borderColor: `${THEME.purple}33` }}>戻る</button>
+            <button onClick={() => setStep(step - 1)} className="px-5 py-3.5 rounded-2xl border-2 bg-white font-bold text-sm active:scale-95" style={{ color: "var(--ink)", borderColor: `${THEME.purple}33` }}>戻る</button>
           )}
           <button onClick={() => (last ? onDone() : setStep(step + 1))}
             className="flex-1 py-3.5 rounded-2xl text-white font-black text-sm active:scale-95 shadow-lg" style={{ background: THEME.festGradient }}>

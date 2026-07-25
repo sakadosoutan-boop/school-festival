@@ -14,6 +14,20 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
     <title>まちたいむ | 文化祭ガイド</title>
+    <script>
+      // 夜間モード/文字拡大の設定をReact描画より前に適用し、切り替わりのチラつき(FOUC)を防ぐ。
+      // ロジックはsrc/components/ui.tsxのuseTheme/useTextScaleと同じ判定にしてある。
+      (function () {
+        try {
+          var root = document.documentElement;
+          var theme = localStorage.getItem("machitime:v6:theme");
+          var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var dark = theme === "dark" || (theme !== "light" && prefersDark);
+          if (dark) root.classList.add("dark");
+          if (localStorage.getItem("machitime:v6:textScale") === "1") root.classList.add("text-lg-mode");
+        } catch (e) { /* ローカルストレージが使えない場合は既定表示のまま */ }
+      })();
+    </script>
   </head>
   <body>
     <noscript>このアプリを利用するにはJavaScriptを有効にしてください。</noscript>

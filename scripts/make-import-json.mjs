@@ -26,6 +26,7 @@ const booth = (raw) => ({
   room: raw.room ?? "",
   location: "",
   description: raw.description ?? "",
+  kidsFriendly: raw.kidsFriendly ?? false,
   isOpen: false, // 開場までは準備中で配布する
   peopleInLine: 0,
   capacity: raw.capacity ?? 2,

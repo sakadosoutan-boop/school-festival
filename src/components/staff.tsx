@@ -1,18 +1,24 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import {
   AlertTriangle, BellRing, Calculator, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Download,
-  Info, Lock, LogOut, Megaphone, Music, Plus, Minus, RefreshCw, Settings, Smartphone, Sparkles, Trash2, Undo2, Upload, Users, X, Zap,
+  Info, LayoutDashboard, Lock, LogOut, Megaphone, Music, Plus, Minus, RefreshCw, Search, Settings, Smartphone,
+  Sparkles, Trash2, Undo2, Upload, Users, X, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  ALLERGENS, APP_NAME, avgCycle, BUILDINGS, calcWait, CATEGORIES, CLASS_NUMS, EMOJI_PALETTE, FLOORS, formatCycle,
-  formatLocation, formatOrganizer, formatTime, freshness, getStatus, GRADES, isSoldOut, makeBooth,
-  minutesSince, NAG_MINUTES, ORG_TYPES, THEME,
+  ALLERGENS, allSoldOut, APP_NAME, avgCycle, BUILDINGS, calcWait, CATEGORIES, CLASS_NUMS, EMOJI_PALETTE, FLOORS,
+  formatCycle, formatLocation, formatOrganizer, formatRelative, formatTime, freshness, getStatus, GRADES, isSoldOut,
+  makeBooth, matchesBoothQuery, minutesSince, NAG_MINUTES, ORG_TYPES, serveBlockedReason, sortBoothsForStaff,
+  STALE_MINUTES, summarizeBooths, THEME, undoSecondsLeft,
 } from "../lib/festival";
+import type { StaffSortKey } from "../lib/festival";
 import { backendConfigured, DEMO_ADMIN_PIN, DEMO_STAFF_PIN } from "../lib/api";
 import type { Booth, FestivalNotice, Product, SnapshotMeta, StaffRole } from "../types";
-import { BoothIcon, Confirm, Field, fileToIconDataUrl, Hint, IconButton, NumberStepper, QuickPick, Sheet, Wheel } from "./ui";
+import {
+  BoothIcon, Confirm, Field, fileToIconDataUrl, Hint, IconButton, NumberStepper, QuickPick, Sheet, StaleBadge,
+  StatCard, Wheel,
+} from "./ui";
 
 /* ═══════════ STAFF: PIN LOGIN ═══════════ */
 
@@ -73,93 +79,132 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
   booths: Booth[]; role: StaffRole; pendingCount: number;
   onSelect: (id: string) => void; onCreate: () => void; onEdit: (id: string) => void;
   onLogout: () => void; onOpenSettings: () => void; onOpenStage: () => void;
-}) => (
-  <div>
-    <div className="sticky top-0 z-10 bg-stone-50/90 backdrop-blur-xl border-b border-stone-200 px-4 py-3 flex items-center gap-2">
-      <div className="flex-1 min-w-0">
-        <div className="font-bold text-stone-900">スタッフメニュー</div>
-        <div className="text-[10px] font-bold text-stone-400">{role === "admin" ? "管理者PINでログイン中" : "更新用PINでログイン中"}</div>
-      </div>
-      <IconButton icon={Settings} onClick={onOpenSettings} label="設定" variant="soft" size="sm" />
-      <button onClick={onLogout} className="text-xs font-bold text-stone-500 hover:text-stone-900 px-2 py-1.5 flex items-center gap-1">
-        <LogOut size={14} /> ログアウト
-      </button>
-    </div>
+}) => {
+  const [query, setQuery] = useState("");
+  const [sortKey, setSortKey] = useState<StaffSortKey>("default");
 
-    <div className="px-4 py-5">
-      {pendingCount > 0 && (
-        <div className="mb-3 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 flex items-start gap-2.5">
-          <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" strokeWidth={2.4} />
-          <div className="text-xs text-amber-900 leading-relaxed"><strong className="font-bold">未送信の更新が{pendingCount}件あります。</strong>電波が戻ると自動で送信されます。</div>
-        </div>
-      )}
+  // 検索(名前・クラス・部屋番号)→並び替えの順で適用。43団体からの絞り込みを速くする。
+  const visibleBooths = sortBoothsForStaff(booths.filter((b) => matchesBoothQuery(b, query)), sortKey);
+  const staleOpenCount = booths.filter((b) => b.isOpen && freshness(b) !== "fresh").length;
 
-      <button onClick={onOpenStage}
-        className="w-full mb-3 flex items-center gap-3 p-4 rounded-2xl active:scale-[0.99] transition-all text-left text-white shadow-md"
-        style={{ background: "linear-gradient(120deg,#9b5de5,#4cc9f0)" }}>
-        <div className="w-12 h-12 rounded-xl bg-white/25 flex items-center justify-center flex-shrink-0">
-          <Music size={22} className="text-white" strokeWidth={2.4} />
+  return (
+    <div>
+      <div className="sticky top-0 z-10 bg-stone-50/90 backdrop-blur-xl border-b border-stone-200 px-4 py-3 flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-stone-900">スタッフメニュー</div>
+          <div className="text-[10px] font-bold text-stone-400">{role === "admin" ? "管理者PINでログイン中" : "更新用PINでログイン中"}</div>
         </div>
-        <div className="flex-1"><div className="font-black">ステージ進行を管理</div><div className="text-xs text-white/85">タイムテーブルの編集・時刻のずらし・中止</div></div>
-        <ChevronRight size={18} className="text-white/70" />
-      </button>
-
-      <div className="mb-4 p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-start gap-2.5">
-        <Info size={16} className="text-indigo-600 mt-0.5 flex-shrink-0" strokeWidth={2.4} />
-        <div className="text-xs text-indigo-900 leading-relaxed">
-          待ち時間を更新するには<strong className="font-bold"> 運用する</strong>、
-          ブース名や場所を変えるには<strong className="font-bold"> 編集 </strong>を押してください。
-        </div>
+        <IconButton icon={Settings} onClick={onOpenSettings} label="設定" variant="soft" size="sm" />
+        <button onClick={onLogout} className="text-xs font-bold text-stone-500 hover:text-stone-900 px-2 py-1.5 flex items-center gap-1">
+          <LogOut size={14} /> ログアウト
+        </button>
       </div>
 
-      <button onClick={onCreate}
-        className="w-full mb-3 flex items-center gap-3 p-4 bg-white rounded-2xl border-2 border-dashed border-stone-300 hover:border-stone-900 hover:bg-stone-50 active:scale-[0.99] transition-all text-left">
-        <div className="w-12 h-12 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0">
-          <Plus size={22} className="text-stone-700" strokeWidth={2.5} />
-        </div>
-        <div className="flex-1"><div className="font-bold text-stone-900">新しいブースを追加</div><div className="text-xs text-stone-500">名前・場所・運営団体を登録</div></div>
-      </button>
+      <div className="px-4 py-5">
+        {pendingCount > 0 && (
+          <div className="mb-3 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 flex items-start gap-2.5">
+            <AlertTriangle size={16} className="text-amber-600 mt-0.5 flex-shrink-0" strokeWidth={2.4} />
+            <div className="text-xs text-amber-900 leading-relaxed"><strong className="font-bold">未送信の更新が{pendingCount}件あります。</strong>電波が戻ると自動で送信されます。</div>
+          </div>
+        )}
 
-      {booths.length === 0 && (
-        <div className="text-center py-12 text-stone-400">
-          <div className="text-4xl mb-2">🎪</div>
-          <div className="font-bold text-stone-600">まだブースがありません</div>
-          <div className="text-sm mt-1">上のボタンから追加してください</div>
-        </div>
-      )}
+        <button onClick={onOpenStage}
+          className="w-full mb-3 flex items-center gap-3 p-4 rounded-2xl active:scale-[0.99] transition-all text-left text-white shadow-md"
+          style={{ background: "linear-gradient(120deg,#9b5de5,#4cc9f0)" }}>
+          <div className="w-12 h-12 rounded-xl bg-white/25 flex items-center justify-center flex-shrink-0">
+            <Music size={22} className="text-white" strokeWidth={2.4} />
+          </div>
+          <div className="flex-1"><div className="font-black">ステージ進行を管理</div><div className="text-xs text-white/85">タイムテーブルの編集・時刻のずらし・中止</div></div>
+          <ChevronRight size={18} className="text-white/70" />
+        </button>
 
-      <div className="grid grid-cols-1 gap-3">
-        {booths.map((b) => {
-          const status = getStatus(b.waitMinutes, b.isOpen);
-          const f = freshness(b);
-          return (
-            <div key={b.id} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
-              <div className="flex items-center gap-3 p-3.5">
-                <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden" style={{ backgroundColor: status.soft }}><BoothIcon booth={b} size={48} rounded={12} emojiClass="text-2xl" /></div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold text-stone-900 truncate">{b.name || "(無題)"}</div>
-                  <div className="text-xs text-stone-500 truncate">{formatOrganizer(b) || "未設定"} · {formatLocation(b) || "場所未設定"}</div>
-                </div>
-                <div className="text-right flex-shrink-0">
-                  <div className="text-lg font-black tabular-nums" style={{ color: status.color }}>{b.isOpen ? `${b.waitMinutes}分` : "休"}</div>
-                  {b.isOpen && f !== "fresh" && <div className="text-[10px] font-bold text-amber-600">要更新</div>}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-px bg-stone-200 border-t border-stone-200">
-                <button onClick={() => onSelect(b.id)} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
-                  <CheckCircle2 size={16} className="text-emerald-600" strokeWidth={2.4} /><span className="text-sm font-bold text-stone-900">運用する</span>
+        <div className="mb-4 p-3.5 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-start gap-2.5">
+          <Info size={16} className="text-indigo-600 mt-0.5 flex-shrink-0" strokeWidth={2.4} />
+          <div className="text-xs text-indigo-900 leading-relaxed">
+            待ち時間を更新するには<strong className="font-bold"> 運用する</strong>、
+            ブース名や場所を変えるには<strong className="font-bold"> 編集 </strong>を押してください。
+          </div>
+        </div>
+
+        <button onClick={onCreate}
+          className="w-full mb-3 flex items-center gap-3 p-4 bg-white rounded-2xl border-2 border-dashed border-stone-300 hover:border-stone-900 hover:bg-stone-50 active:scale-[0.99] transition-all text-left">
+          <div className="w-12 h-12 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0">
+            <Plus size={22} className="text-stone-700" strokeWidth={2.5} />
+          </div>
+          <div className="flex-1"><div className="font-bold text-stone-900">新しいブースを追加</div><div className="text-xs text-stone-500">名前・場所・運営団体を登録</div></div>
+        </button>
+
+        {booths.length === 0 ? (
+          <div className="text-center py-12 text-stone-400">
+            <div className="text-4xl mb-2">🎪</div>
+            <div className="font-bold text-stone-600">まだブースがありません</div>
+            <div className="text-sm mt-1">上のボタンから追加してください</div>
+          </div>
+        ) : (
+          <>
+            <div className="relative mb-2.5">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" strokeWidth={2.4} />
+              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+                placeholder="名前・クラス・部屋番号で検索(例: 2-6 / 301 / お化け屋敷)"
+                className="w-full pl-10 pr-9 py-3 rounded-2xl border border-stone-200 text-sm bg-white outline-none focus:border-stone-900" />
+              {query && (
+                <button onClick={() => setQuery("")} aria-label="検索をクリア"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center active:scale-90">
+                  <X size={12} className="text-stone-500" strokeWidth={2.6} />
                 </button>
-                <button onClick={() => onEdit(b.id)} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
-                  <Settings size={16} className="text-indigo-600" strokeWidth={2.4} /><span className="text-sm font-bold text-stone-900">編集</span>
-                </button>
-              </div>
+              )}
             </div>
-          );
-        })}
+
+            <div className="flex items-center gap-1.5 mb-3 overflow-x-auto scrollbar-none">
+              <QuickPick active={sortKey === "default"} onClick={() => setSortKey("default")}>登録順</QuickPick>
+              <QuickPick active={sortKey === "name"} onClick={() => setSortKey("name")}>名前順</QuickPick>
+              <QuickPick active={sortKey === "stale"} onClick={() => setSortKey("stale")}>要更新順{staleOpenCount > 0 ? `(${staleOpenCount})` : ""}</QuickPick>
+            </div>
+
+            {visibleBooths.length === 0 && (
+              <div className="text-center py-10 text-stone-400">
+                <div className="text-3xl mb-2">🔍</div>
+                <div className="text-sm font-bold text-stone-500">「{query}」に一致するブースがありません</div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 gap-3">
+              {visibleBooths.map((b) => {
+                const status = getStatus(b.waitMinutes, b.isOpen);
+                return (
+                  <div key={b.id} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
+                    <div className="flex items-center gap-3 p-3.5">
+                      <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden" style={{ backgroundColor: status.soft }}><BoothIcon booth={b} size={48} rounded={12} emojiClass="text-2xl" /></div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-stone-900 truncate">{b.name || "(無題)"}</div>
+                        <div className="text-xs text-stone-500 truncate">{formatOrganizer(b) || "未設定"} · {formatLocation(b) || "場所未設定"}</div>
+                        <div className="flex items-center flex-wrap gap-1 mt-1">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold" style={{ color: status.color, backgroundColor: status.soft, border: `1px solid ${status.ring}` }}>{status.label}</span>
+                          {b.isOpen && <StaleBadge booth={b} />}
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="text-lg font-black tabular-nums" style={{ color: status.color }}>{b.isOpen ? `${b.waitMinutes}分` : "—"}</div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-px bg-stone-200 border-t border-stone-200">
+                      <button onClick={() => onSelect(b.id)} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
+                        <CheckCircle2 size={16} className="text-emerald-600" strokeWidth={2.4} /><span className="text-sm font-bold text-stone-900">運用する</span>
+                      </button>
+                      <button onClick={() => onEdit(b.id)} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
+                        <Settings size={16} className="text-indigo-600" strokeWidth={2.4} /><span className="text-sm font-bold text-stone-900">編集</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ═══════════ STAFF: BOOTH EDITOR ═══════════ */
 
@@ -322,6 +367,17 @@ export const EditBoothSheet = ({ booth, onClose, onSave, onDelete, isNew }: { bo
           <Hint>{form.description.length} / 120 文字</Hint>
         </Field>
 
+        <Field label="👶 小さなお子さま向け">
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => set("kidsFriendly", true)}
+              className={`py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 ${form.kidsFriendly ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`}
+              style={form.kidsFriendly ? { background: "linear-gradient(135deg,#3ddc97,#4cc9f0)" } : {}}>対象にする</button>
+            <button type="button" onClick={() => set("kidsFriendly", false)}
+              className={`py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 ${!form.kidsFriendly ? "bg-stone-700 text-white" : "bg-white text-stone-700 border border-stone-200"}`}>対象外</button>
+          </div>
+          <Hint>お化け屋敷など刺激の強い企画では外してください</Hint>
+        </Field>
+
         <Field label="1回に同時案内できる人数">
           <NumberStepper value={form.capacity} onChange={(v) => set("capacity", v)} min={1} max={200} step={1} unit="人/回" />
           <Hint>例: たこ焼き5人前同時提供なら「5」、脱出ゲーム4人1組なら「4」</Hint>
@@ -350,9 +406,18 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
   const [pulse, setPulse] = useState(false);
   const [newProdName, setNewProdName] = useState("");
   const [newProdStock, setNewProdStock] = useState("20");
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const status = getStatus(booth.waitMinutes, booth.isOpen);
   const learnedCycle = avgCycle(booth.cycleHistory, booth.cycleSeconds);
   const nag = booth.isOpen && minutesSince(booth.lastUpdated) >= NAG_MINUTES;
+  const serveBlocked = serveBlockedReason(booth);
+
+  // 「取り消せる残り◯秒」を目に見える形にするため、取り消し可能な間だけ1秒ごとに再計算する。
+  useEffect(() => {
+    if (!booth.undoSnapshot) return;
+    const id = window.setInterval(() => setNowTick(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [booth.undoSnapshot]);
 
   const products = booth.products || [];
   const setProducts = (next: Product[]) => onUpdate({ products: next });
@@ -394,7 +459,10 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
     onUpdate({ peopleInLine: s.peopleInLine, cycleHistory: s.cycleHistory, lastServedAt: s.lastServedAt, waitMinutes: s.waitMinutes, cycleSeconds: avgCycle(s.cycleHistory, booth.cycleSeconds), undoSnapshot: null });
   };
 
-  const canUndo = booth.undoSnapshot && (Date.now() - booth.undoSnapshot.ts) < 60_000;
+  const undoSecsLeft = undoSecondsLeft(booth.undoSnapshot, nowTick);
+  const canUndo = undoSecsLeft > 0;
+  // 期限切れ直後(5分以内)だけ「過ぎました」と伝える。いつまでも出し続けると邪魔になるため。
+  const undoExpired = !canUndo && booth.undoSnapshot !== null && (nowTick - booth.undoSnapshot.ts) < 5 * 60_000;
 
   return (
     <div className="pb-32">
@@ -437,23 +505,37 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
           <div className="flex items-baseline gap-2">
             <span className={`text-7xl font-black tracking-tight tabular-nums ${pulse ? "animate-pulse" : ""}`} style={{ color: status.color, letterSpacing: "-0.05em", lineHeight: 1 }}>{booth.waitMinutes}</span>
             <span className="text-2xl font-bold" style={{ color: status.color }}>分</span>
+            <span className="text-sm font-black" style={{ color: status.color }}>{status.label}</span>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-xs text-stone-600"><Info size={12} /><span>{booth.peopleInLine}人 ÷ {booth.capacity}組 × {formatCycle(learnedCycle)} で自動算出</span></div>
+          <div className="mt-3 flex items-center gap-2 text-sm font-bold" style={{ color: status.color }}>
+            <Users size={14} strokeWidth={2.6} />
+            <span>{booth.peopleInLine > 0 ? `列に${booth.peopleInLine}人が並んでいます` : "今は列に誰も並んでいません"}</span>
+          </div>
+          <div className="mt-1.5 flex items-center gap-2 text-xs text-stone-600"><Info size={12} /><span>{booth.peopleInLine}人 ÷ {booth.capacity}組 × {formatCycle(learnedCycle)} で自動算出</span></div>
         </div>
 
-        <button onClick={markServed} disabled={!booth.isOpen || booth.peopleInLine <= 0}
+        <button onClick={markServed} disabled={!!serveBlocked}
           className="w-full text-white rounded-2xl py-5 px-5 flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-40 shadow-lg"
-          style={{ background: (!booth.isOpen || booth.peopleInLine <= 0) ? "#a8a29e" : "linear-gradient(135deg,#ff4d8d,#9b5de5)" }}>
+          style={{ background: serveBlocked ? "#a8a29e" : "linear-gradient(135deg,#ff4d8d,#9b5de5)" }}>
           <CheckCircle2 size={22} strokeWidth={2.5} /><span className="font-black text-base">{booth.capacity}人ご案内しました</span>
         </button>
+        {serveBlocked && (
+          <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-700 text-center mt-2">
+            <Info size={12} strokeWidth={2.5} /> {serveBlocked}
+          </div>
+        )}
 
         {canUndo ? (
           <>
-            <button onClick={undo} className="w-full mt-2 py-2.5 rounded-xl bg-white border border-stone-200 text-stone-700 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98]">
-              <Undo2 size={14} strokeWidth={2.5} /> 直前の操作を取り消す
+            <button onClick={undo} className="w-full mt-2 py-3 rounded-xl bg-indigo-50 border-2 border-indigo-200 text-indigo-700 text-sm font-black flex items-center justify-center gap-1.5 active:scale-[0.98]">
+              <Undo2 size={16} strokeWidth={2.8} /> 直前の操作を取り消す({undoSecsLeft}秒)
             </button>
-            <div className="text-xs text-stone-400 text-center mt-2 mb-5">💡 1分以内なら誤タップを取り消せます</div>
+            <div className="text-xs text-stone-400 text-center mt-2 mb-5">💡 誤タップならこのボタンで戻せます</div>
           </>
+        ) : undoExpired ? (
+          <div className="text-xs text-stone-400 text-center mt-2 mb-5 px-4 flex items-center justify-center gap-1.5">
+            <Undo2 size={12} strokeWidth={2.4} /> 取り消せる時間(1分)を過ぎました
+          </div>
         ) : (
           <div className="text-xs text-stone-500 text-center mt-2 mb-5 px-4">💡 押すたびに「1組あたりの時間」を自動学習し、精度が上がります</div>
         )}
@@ -473,6 +555,12 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
           <div className="grid grid-cols-4 gap-2 mt-3">
             {[5, 10, 20, 50].map((n) => <button key={n} onClick={() => setLine(n)} className="py-2 text-xs font-bold text-stone-700 bg-stone-50 hover:bg-stone-100 rounded-xl border border-stone-200">{n}人</button>)}
           </div>
+          {booth.peopleInLine > 0 && (
+            <button onClick={() => setLine(0)}
+              className="w-full mt-2 py-2.5 rounded-xl border border-dashed border-stone-300 text-stone-600 text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 hover:border-stone-400 hover:bg-stone-50">
+              <Check size={13} strokeWidth={3} /> 列がなくなった(0人にする)
+            </button>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl p-5 mb-3 border border-stone-200">
@@ -664,6 +752,7 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
   const [noticeText, setNoticeText] = useState("");
   const [noticeKind, setNoticeKind] = useState<FestivalNotice["kind"]>("lost");
   const [notice, setNotice] = useState(emergencyNotice);
+  const [dashboardOpen, setDashboardOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const isAdmin = role === "admin";
 
@@ -684,6 +773,19 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
   return (
     <Sheet onClose={onClose} title="設定">
       <div className="px-5 pb-8 pt-2 space-y-5">
+        {/* 運営ダッシュボード(管理者) */}
+        {isAdmin && (
+          <button onClick={() => setDashboardOpen(true)}
+            className="w-full flex items-center gap-3 p-4 rounded-2xl active:scale-[0.99] transition-all text-left text-white shadow-md"
+            style={{ background: "linear-gradient(120deg,#ff8a3d,#ff4d8d)" }}>
+            <div className="w-12 h-12 rounded-xl bg-white/25 flex items-center justify-center flex-shrink-0">
+              <LayoutDashboard size={22} className="text-white" strokeWidth={2.4} />
+            </div>
+            <div className="flex-1"><div className="font-black">運営ダッシュボード</div><div className="text-xs text-white/85">待ち時間・要連絡ブース・完売状況を一覧</div></div>
+            <ChevronRight size={18} className="text-white/70" />
+          </button>
+        )}
+
         {/* 全体お知らせ(管理者) */}
         {isAdmin && (
           <div className="bg-white rounded-2xl p-5 border border-stone-200">
@@ -840,6 +942,95 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
           onCancel={() => setConfirmBulk(null)}
         />
       )}
+      {dashboardOpen && <AdminDashboardSheet booths={booths} notices={notices} onClose={() => setDashboardOpen(false)} />}
+    </Sheet>
+  );
+};
+
+/* ═══════════ ADMIN: DASHBOARD ═══════════ */
+
+// 実行委員が当日ざっと状況を確認するための管理者専用サマリー。
+// 新規のAPI通信は行わず、既に読み込み済みのbooths/noticesだけから集計する(SettingsSheetから開く)。
+export const AdminDashboardSheet = ({ booths, notices, onClose }: { booths: Booth[]; notices: FestivalNotice[]; onClose: () => void }) => {
+  const summary = summarizeBooths(booths);
+
+  return (
+    <Sheet onClose={onClose} title="運営ダッシュボード">
+      <div className="px-5 pb-8 pt-2 space-y-4">
+        <div className="grid grid-cols-3 gap-2">
+          <StatCard label="営業中" value={`${summary.openCount}`} unit="件" />
+          <StatCard label="準備中" value={`${summary.closedCount}`} unit="件" />
+          <StatCard label="お知らせ" value={`${notices.length}`} unit="件掲示中" />
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-stone-200">
+          <div className="font-bold text-stone-900 mb-2.5 flex items-center gap-1.5"><Zap size={15} className="text-amber-500" strokeWidth={2.4} /> 待ち時間ランキング</div>
+          {summary.topWait.length === 0 ? (
+            <div className="text-xs text-stone-400 py-4 text-center">今、行列ができているブースはありません</div>
+          ) : (
+            <div className="space-y-1.5">
+              {summary.topWait.map((b, i) => {
+                const status = getStatus(b.waitMinutes, b.isOpen);
+                return (
+                  <div key={b.id} className="flex items-center gap-2.5 p-2 rounded-xl" style={{ backgroundColor: status.soft }}>
+                    <span className="w-4 text-center text-xs font-black text-stone-400 flex-shrink-0">{i + 1}</span>
+                    <BoothIcon booth={b} size={30} rounded={9} emojiClass="text-lg" />
+                    <span className="flex-1 text-sm font-bold text-stone-900 truncate">{b.name || "(無題)"}</span>
+                    <span className="text-sm font-black tabular-nums flex-shrink-0" style={{ color: status.color }}>{b.waitMinutes}分</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-stone-200">
+          <div className="font-bold text-stone-900 mb-1 flex items-center gap-1.5"><BellRing size={15} className="text-amber-600" strokeWidth={2.4} /> 更新が止まっているブース</div>
+          <p className="text-[11px] text-stone-400 mb-2.5 leading-relaxed">営業中なのに{STALE_MINUTES}分以上更新がありません。担当者に連絡してください。</p>
+          {summary.staleBooths.length === 0 ? (
+            <div className="text-xs text-stone-400 py-4 text-center">すべて最新の状態です</div>
+          ) : (
+            <div className="space-y-1.5">
+              {summary.staleBooths.map((b) => (
+                <div key={b.id} className="flex items-center gap-2.5 p-2 rounded-xl bg-amber-50 border border-amber-100">
+                  <BoothIcon booth={b} size={30} rounded={9} emojiClass="text-lg" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-stone-900 truncate">{b.name || "(無題)"}</div>
+                    <div className="text-[11px] text-stone-500 truncate">{formatOrganizer(b) || "担当団体未設定"}</div>
+                  </div>
+                  <span className="text-[11px] font-bold text-amber-700 flex-shrink-0">{formatRelative(b.lastUpdated)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-2xl p-4 border border-stone-200">
+          <div className="font-bold text-stone-900 mb-2.5 flex items-center gap-1.5"><span className="text-base">🛍️</span> 売り切れのあるブース{summary.fullySoldOutCount > 0 ? `(全品完売 ${summary.fullySoldOutCount}件)` : ""}</div>
+          {summary.soldOutBooths.length === 0 ? (
+            <div className="text-xs text-stone-400 py-4 text-center">売り切れの商品はありません</div>
+          ) : (
+            <div className="space-y-1.5">
+              {summary.soldOutBooths.map((b) => {
+                const soldNames = (b.products || []).filter(isSoldOut).map((p) => p.name).filter(Boolean).join("・");
+                const all = allSoldOut(b);
+                return (
+                  <div key={b.id} className={`flex items-center gap-2.5 p-2 rounded-xl border ${all ? "bg-red-50 border-red-200" : "bg-stone-50 border-stone-200"}`}>
+                    <BoothIcon booth={b} size={30} rounded={9} emojiClass="text-lg" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-stone-900 truncate">{b.name || "(無題)"}</div>
+                      {soldNames && <div className="text-[11px] text-stone-500 truncate">{soldNames}</div>}
+                    </div>
+                    {all && <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-600 text-white flex-shrink-0">全品完売</span>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <p className="text-[11px] text-stone-400 text-center leading-relaxed">{summary.totalCount}ブース中 営業中{summary.openCount}件・準備中{summary.closedCount}件。表示は最後に同期した情報に基づきます。</p>
+      </div>
     </Sheet>
   );
 };

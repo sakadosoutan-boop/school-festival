@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Eye, HelpCircle, Map as MapIcon, Megaphone, Music, RefreshCw, ShieldCheck, Star, WifiOff } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Eye, HelpCircle, LayoutGrid, List, Map as MapIcon, Megaphone, Monitor, Moon, Music, RefreshCw, ShieldCheck, Star, Sun, Type, WifiOff } from "lucide-react";
 import {
-  allSoldOut, avgCycle, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
+  allSoldOut, avgCycle, BUILDINGS, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
   sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME, todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
@@ -10,10 +10,14 @@ import {
   saveStage as apiSaveStage, updateSettings, verifyPin,
 } from "./lib/api";
 import { normalizeForSearch } from "./lib/text";
+import { buildCourses, closingNotice, isDensity, isKidsFriendly } from "./lib/guest-helpers";
+import type { Density } from "./lib/guest-helpers";
 import type { Booth, FestivalNotice, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
-import { EmptyState, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll } from "./components/ui";
+import { EmptyState, SkipLink, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll, useTextScale, useTheme } from "./components/ui";
 import type { ToastType } from "./components/ui";
 import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
+import { CourseSuggestions } from "./components/courses";
+import { StampRallyCard, useStampRally } from "./components/rally";
 import { InstallAppCard, InstallInstructionsSheet } from "./components/install";
 import { CalculatorSheet, EditBoothSheet, SettingsSheet, SnapshotSheet, StaffBoothPanel, StaffBoothSelector, StaffLogin } from "./components/staff";
 import { StageEditor, StageView } from "./components/stage";
@@ -25,16 +29,42 @@ const LOCAL_KEY = "machitime:v6:local";
 const SESSION_PIN_KEY = "machitime:v6:staff-pin";
 const SESSION_ROLE_KEY = "machitime:v6:staff-role";
 
-interface LocalPrefs { favorites: string[]; onboarded: boolean }
+interface LocalPrefs {
+  favorites: string[];
+  onboarded: boolean;
+  /** 一覧の表示密度(既定はコンパクト: 1画面に5〜6件入る) */
+  density: Density;
+  /** お気に入りセクションを開いているか */
+  favOpen: boolean;
+}
+
+const DEFAULT_PREFS: LocalPrefs = { favorites: [], onboarded: false, density: "compact", favOpen: true };
 
 function readLocal(): LocalPrefs {
   try {
-    const value = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? "null") as LocalPrefs | null;
-    return { favorites: Array.isArray(value?.favorites) ? value.favorites : [], onboarded: !!value?.onboarded };
+    const value = JSON.parse(localStorage.getItem(LOCAL_KEY) ?? "null") as Partial<LocalPrefs> | null;
+    return {
+      favorites: Array.isArray(value?.favorites) ? value.favorites : [],
+      onboarded: !!value?.onboarded,
+      // 旧バージョンの保存値には density / favOpen が無いため、既定値で補って互換を保つ
+      density: isDensity(value?.density) ? value.density : DEFAULT_PREFS.density,
+      favOpen: value?.favOpen !== false,
+    };
   } catch {
-    return { favorites: [], onboarded: false };
+    return DEFAULT_PREFS;
   }
 }
+
+// ホームだけ大画面で横に広げる(他タブのレイアウトには影響させない)
+const HOME_WIDTH = "max-w-xl md:max-w-3xl xl:max-w-6xl";
+
+const FilterChip = ({ active, activeColor, onClick, children }: { active: boolean; activeColor: string; onClick: () => void; children: React.ReactNode }) => (
+  <button onClick={onClick} aria-pressed={active}
+    className={`flex-shrink-0 relative px-3 py-1.5 rounded-full text-xs font-extrabold border-2 before:content-[''] before:absolute before:-inset-y-1.5 before:inset-x-0 transition-all active:scale-95 ${active ? "text-white shadow-md" : "bg-white text-stone-600"}`}
+    style={active ? { background: activeColor, borderColor: activeColor } : { borderColor: `${activeColor}55` }}>
+    {children}
+  </button>
+);
 
 function AppInner(): React.JSX.Element {
   const initial = useMemo(() => cachedData(), []);
@@ -48,15 +78,25 @@ function AppInner(): React.JSX.Element {
   const [prefs] = useState(readLocal);
   const [favorites, setFavorites] = useState<string[]>(prefs.favorites);
   const [onboarded, setOnboarded] = useState(prefs.onboarded);
+  const [density, setDensity] = useState<Density>(prefs.density);
+  const [favOpen, setFavOpen] = useState(prefs.favOpen);
 
   const [view, setView] = useState<"home" | "stage" | "map" | "staff">("home");
   const categoryPan = useDragScroll<HTMLDivElement>();
+  const buildingPan = useDragScroll<HTMLDivElement>();
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState("default");
-  // ワンタップ絞り込み: 営業中のみ / すぐ入れる(5分以内・完売以外)
-  const [quickFilter, setQuickFilter] = useState<"none" | "open" | "quick">("none");
+  // ワンタップ絞り込み: 営業中のみ / すぐ入れる(5分以内・完売以外) / お子さま向け
+  const [quickFilter, setQuickFilter] = useState<"none" | "open" | "quick" | "kids">("none");
+  // 今いる棟(HR棟・特別棟…)で絞り込む。校舎を移動せずに回れる企画を探すため。
+  const [building, setBuilding] = useState("all");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // ブース詳細「マップで見る」→ マップタブで該当教室を一時的に強調する
+  const [mapFocusId, setMapFocusId] = useState<string | null>(null);
+  // スクロール中はヘッダーの統計カードを畳んで、一覧を早く見せる
+  const [headerCompact, setHeaderCompact] = useState(false);
+  const { visited: rallyVisited, record: recordRallyVisit, reset: resetRally } = useStampRally();
 
   const [staffPin, setStaffPin] = useState(() => sessionStorage.getItem(SESSION_PIN_KEY) ?? "");
   const [staffRole, setStaffRole] = useState<StaffRole | null>(() => {
@@ -271,8 +311,33 @@ function AppInner(): React.JSX.Element {
 
   /* ── ローカル設定の永続化 ── */
   useEffect(() => {
-    try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ favorites, onboarded })); } catch { /* private mode */ }
-  }, [favorites, onboarded]);
+    try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ favorites, onboarded, density, favOpen })); } catch { /* private mode */ }
+  }, [density, favOpen, favorites, onboarded]);
+
+  /* ── スタンプラリー: 詳細を開いた企画を、この端末だけに記録する ── */
+  useEffect(() => {
+    if (selectedId && booths.some((b) => b.id === selectedId)) recordRallyVisit(selectedId);
+  }, [booths, recordRallyVisit, selectedId]);
+
+  /* ── マップの強調表示は数秒で解除する(ずっと光っていると現在地と誤解される) ── */
+  useEffect(() => {
+    if (!mapFocusId) return;
+    const timer = window.setTimeout(() => setMapFocusId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [mapFocusId]);
+  useEffect(() => { if (view !== "map") setMapFocusId(null); }, [view]);
+
+  /* ── ヘッダーの折りたたみ。しきい値に幅を持たせ、境界でのちらつきを防ぐ ── */
+  useEffect(() => {
+    if (view !== "home") { setHeaderCompact(false); return; }
+    const onScroll = () => {
+      const y = window.scrollY;
+      setHeaderCompact((prev) => (prev ? y > 60 : y > 140));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [view]);
 
   /* ── ブース書込: ローカル即時反映 + リモートへ送信(通信断は自動保留) ── */
   const queueToastAt = useRef(0);
@@ -326,6 +391,13 @@ function AppInner(): React.JSX.Element {
 
   const toggleFavorite = useCallback((id: string) => {
     setFavorites((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }, []);
+
+  // 詳細シートを閉じ、マップタブでそのブースの教室へ案内する
+  const showBoothOnMap = useCallback((booth: Booth) => {
+    setSelectedId(null);
+    setMapFocusId(booth.id);
+    setView("map");
   }, []);
 
   /* ── 作成・編集・削除 ── */
@@ -525,8 +597,10 @@ function AppInner(): React.JSX.Element {
   const filtered = useMemo(() => {
     let list = booths;
     if (category !== "all") list = list.filter((b) => b.category === category);
+    if (building !== "all") list = list.filter((b) => b.building === building);
     if (quickFilter === "open") list = list.filter((b) => b.isOpen);
     else if (quickFilter === "quick") list = list.filter((b) => b.isOpen && b.waitMinutes <= 5 && !allSoldOut(b));
+    else if (quickFilter === "kids") list = list.filter(isKidsFriendly);
     const normalized = normalizeForSearch(query);
     if (normalized) {
       list = list.filter((b) => [b.name, b.orgName, b.organizer, b.room, b.description, `${b.grade}年${b.classNum}組`]
@@ -536,7 +610,18 @@ function AppInner(): React.JSX.Element {
     else if (sortBy === "wait_desc") list = [...list].sort((a, b) => b.waitMinutes - a.waitMinutes);
     else if (sortBy === "favorites") list = list.filter((b) => favorites.includes(b.id));
     return list;
-  }, [booths, category, favorites, query, quickFilter, sortBy]);
+  }, [booths, building, category, favorites, query, quickFilter, sortBy]);
+
+  // 棟の絞り込みチップは、実際に企画がある棟だけ出す(空のチップを押させない)
+  const buildingChips = useMemo(() => BUILDINGS.filter((b) => booths.some((x) => x.building === b.id)), [booths]);
+  const favoriteBooths = useMemo(() => booths.filter((b) => favorites.includes(b.id)), [booths, favorites]);
+  const courses = useMemo(() => buildCourses(booths), [booths]);
+  const rallyCount = useMemo(() => {
+    const ids = new Set(rallyVisited);
+    return booths.filter((b) => ids.has(b.id)).length;
+  }, [booths, rallyVisited]);
+  // 校舎入場終了(15:30)の案内。開催日以外は出さない。tickで20秒ごとに再判定する。
+  const closing = useMemo(() => closingNotice(), [tick]);
 
   // 開催当日のホームに出すステージのNOW/NEXT(開催日以外は非表示)
   const festivalDay = todayFestivalDay();
@@ -549,7 +634,13 @@ function AppInner(): React.JSX.Element {
 
   const openBooths = booths.filter((b) => b.isOpen);
   const avgWait = openBooths.length === 0 ? 0 : Math.round(openBooths.reduce((s, b) => s + b.waitMinutes, 0) / openBooths.length);
+  // 「いま並ばずに入れる企画」の数。開催中にいちばん役に立つ指標。
+  const readyNow = openBooths.filter((b) => b.waitMinutes <= 5 && !allSoldOut(b)).length;
+  const syncLabel = backendConfigured ? formatTime(fetchedAt) : (booths.length ? formatTime(Math.max(...booths.map((b) => b.lastUpdated || 0))) : "—");
+  const gridClass = `grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${density === "compact" ? "gap-2" : "gap-3.5"}`;
   const daysToGo = daysUntilFestival();
+  const { enlarged: textEnlarged, toggle: toggleTextScale } = useTextScale();
+  const { mode: themeMode, cycle: cycleTheme } = useTheme();
   const staffBooth = booths.find((b) => b.id === staffBoothId);
   const selectedBooth = booths.find((b) => b.id === selectedId);
   void tick; // 20秒ごとの再レンダリングで相対時刻・進行状況を進める
@@ -559,10 +650,11 @@ function AppInner(): React.JSX.Element {
 
   return (
     <div className="min-h-screen pb-24" style={{ background: "linear-gradient(180deg,#fff7ed 0%,#fef0f5 100%)", fontFamily: '"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }}>
+      <SkipLink />
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Sheets */}
-      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} />}
+      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} />}
       {calcOpen && staffBooth && <CalculatorSheet booth={staffBooth} onClose={() => setCalcOpen(false)} onApply={(u) => { updateBooth(staffBooth.id, u); setCalcOpen(false); showToast(`待ち時間を ${u.waitMinutes}分 に更新しました`); }} />}
       {(editingId || creating) && <EditBoothSheet booth={creating ? null : booths.find((b) => b.id === editingId) ?? null} isNew={creating} onClose={() => { setEditingId(null); setCreating(false); }} onSave={handleSaveBooth} onDelete={() => { if (editingId) void handleDeleteBooth(editingId); }} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
@@ -608,10 +700,34 @@ function AppInner(): React.JSX.Element {
             <div className="absolute top-3 right-24 text-lg anim-twinkle pointer-events-none" style={{ animationDelay: "0.2s" }}>⭐</div>
             <div className="absolute top-7 right-14 text-sm anim-twinkle pointer-events-none" style={{ animationDelay: "0.9s" }}>✨</div>
             <div className="absolute bottom-16 left-3 text-base anim-floaty pointer-events-none">🎈</div>
-            <div className="relative max-w-xl mx-auto px-4 pt-4 pb-3">
-              <div className="flex items-center justify-between mb-3">
-                <img src={logoSrc} alt="まちたいむ" className="h-12 w-auto anim-bobble" style={{ filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.18))" }} />
-                <div className="flex items-center gap-1.5">
+            <div className={`relative ${HOME_WIDTH} mx-auto px-4 pt-4 pb-3`}>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h1 className="flex items-center flex-shrink-0">
+                  <img src={logoSrc} alt="" aria-hidden="true"
+                    className={`w-auto anim-bobble transition-all duration-300 ${headerCompact ? "h-8" : "h-12"}`}
+                    style={{ filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.18))" }} />
+                  <span className="sr-only">まちたいむ｜第53回やなぎ祭 待ち時間・混雑マップ</span>
+                </h1>
+                {/* ヘッダーを畳んでいる間だけ出す要約(高さを詰めても状況が分かるように) */}
+                <div className="flex-1 min-w-0 overflow-hidden transition-all duration-300"
+                  style={{ maxWidth: headerCompact ? 240 : 0, opacity: headerCompact ? 1 : 0 }} aria-hidden={!headerCompact}>
+                  <div className="truncate text-center text-white text-[11px] font-black bg-white/25 backdrop-blur rounded-full px-3 py-1.5">
+                    {openBooths.length > 0 ? `🟢${openBooths.length}/${booths.length} ⚡${readyNow}件 ⏱${avgWait}分` : "🎪 全企画が準備中です"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* ヘッダーは横幅が限られるため、拡大表示・テーマはアイコンだけの丸ボタンに揃える */}
+                  <button onClick={toggleTextScale} aria-pressed={textEnlarged}
+                    aria-label={textEnlarged ? "文字の拡大表示を解除" : "文字を大きく表示"} title={textEnlarged ? "文字の拡大表示を解除" : "文字を大きく表示"}
+                    className={`w-10 h-10 rounded-full backdrop-blur flex items-center justify-center transition-all active:scale-95 ${textEnlarged ? "bg-white text-stone-900" : "bg-white/25 hover:bg-white/40 text-white"}`}>
+                    <Type size={18} strokeWidth={2.4} />
+                  </button>
+                  <button onClick={cycleTheme}
+                    aria-label={`表示テーマ: ${themeMode === "dark" ? "夜間モード" : themeMode === "light" ? "昼間モード" : "自動"}。タップで切り替え`}
+                    title={themeMode === "dark" ? "夜間モード" : themeMode === "light" ? "昼間モード" : "自動(端末の設定に従う)"}
+                    className="w-10 h-10 rounded-full bg-white/25 hover:bg-white/40 backdrop-blur text-white flex items-center justify-center transition-all active:scale-95">
+                    {themeMode === "dark" ? <Moon size={18} strokeWidth={2.2} /> : themeMode === "light" ? <Sun size={18} strokeWidth={2.2} /> : <Monitor size={18} strokeWidth={2.2} />}
+                  </button>
                   <button onClick={() => setHelpOpen(true)} aria-label="ヘルプ" className="w-10 h-10 rounded-full bg-white/25 hover:bg-white/40 backdrop-blur text-white flex items-center justify-center transition-all active:scale-95"><HelpCircle size={18} strokeWidth={2.2} /></button>
                   <button onClick={() => void refresh(false)} aria-label="更新" className="w-10 h-10 rounded-full bg-white/25 hover:bg-white/40 backdrop-blur text-white flex items-center justify-center transition-all active:scale-95"><RefreshCw size={18} strokeWidth={2.2} /></button>
                 </div>
@@ -625,18 +741,34 @@ function AppInner(): React.JSX.Element {
               {import.meta.env.PROD && !backendConfigured && (
                 <div className="mb-3 p-2.5 rounded-xl bg-amber-500/90 flex items-center gap-2 text-xs font-black text-white">⚠ デモ表示中：端末間でデータは共有されません(共有APIが未設定です)</div>
               )}
-              <div className="grid grid-cols-3 gap-2">
-                <StatCard label="営業中" value={`${openBooths.length}`} unit="店舗" />
-                <StatCard label="平均待ち" value={`${avgWait}`} unit="分" />
-                <StatCard label="最終同期" value={backendConfigured ? formatTime(fetchedAt) : (booths.length ? formatTime(Math.max(...booths.map((b) => b.lastUpdated || 0))) : "—")} />
+              {/* スクロール中は畳む。ヘッダーが画面の半分を占めないようにするため。 */}
+              <div className="overflow-hidden transition-all duration-300"
+                style={{ maxHeight: headerCompact ? 0 : 240, opacity: headerCompact ? 0 : 1 }} aria-hidden={headerCompact}>
+                {openBooths.length > 0 ? (
+                  <div className="grid grid-cols-3 gap-2 xl:max-w-2xl">
+                    <StatCard label="⚡すぐ入れる" value={`${readyNow}`} unit="件" />
+                    <StatCard label="🟢営業中" value={`${openBooths.length}`} unit={`/${booths.length}`} />
+                    <StatCard label="⏱平均待ち" value={`${avgWait}`} unit="分" />
+                  </div>
+                ) : (
+                  /* 開場前は0が3つ並ぶだけで役に立たないので、案内文に置き換える */
+                  <div className="rounded-2xl bg-white/90 backdrop-blur px-3.5 py-2.5 shadow-sm xl:max-w-2xl">
+                    <div className="text-xs font-black" style={{ color: THEME.purple }}>
+                      {booths.length > 0 ? `🎪 いまは全${booths.length}企画が準備中です` : "🎪 ただいま準備中です"}
+                    </div>
+                    <div className="text-[11px] font-bold text-stone-500 mt-0.5 leading-relaxed">
+                      一般公開は10:00〜16:00（校舎への入場は15:30まで）。営業が始まると、待ち時間がここに表示されます。
+                    </div>
+                  </div>
+                )}
+                {daysToGo != null && daysToGo > 0 && (
+                  <div className="mt-3 px-3 py-2 rounded-xl bg-white/25 backdrop-blur text-white text-xs font-black text-center">
+                    🎉 やなぎ祭まであと{daysToGo}日（8/29土・8/30日 開催）
+                  </div>
+                )}
               </div>
-              {daysToGo != null && daysToGo > 0 && (
-                <div className="mt-3 px-3 py-2 rounded-xl bg-white/25 backdrop-blur text-white text-xs font-black text-center">
-                  🎉 やなぎ祭まであと{daysToGo}日（8/29土・8/30日 開催）
-                </div>
-              )}
             </div>
-            <div className="relative max-w-xl mx-auto px-4 pb-3.5">
+            <div className={`relative ${HOME_WIDTH} mx-auto px-4 pb-3.5`}>
               {/* PC向け: ドラッグに気づかなくても押せる左右ボタン */}
               <button onClick={() => categoryPan.ref.current?.scrollBy({ left: -220, behavior: "smooth" })} aria-label="カテゴリを左へ"
                 className="hidden md:flex absolute left-0.5 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/90 shadow-md items-center justify-center text-stone-600 active:scale-95">
@@ -649,7 +781,7 @@ function AppInner(): React.JSX.Element {
               <div {...categoryPan} className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:mx-6 cursor-grab active:cursor-grabbing select-none">
                 {CATEGORIES.map((c) => (
                   <button key={c.id} onClick={() => setCategory(c.id)}
-                    className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 ${category === c.id ? "bg-white shadow-md" : "bg-white/25 text-white backdrop-blur hover:bg-white/40"}`}
+                    className={`relative flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 before:content-[''] before:absolute before:-inset-y-2 before:inset-x-0 ${category === c.id ? "bg-white shadow-md" : "bg-white/25 text-white backdrop-blur hover:bg-white/40"}`}
                     style={category === c.id ? { color: THEME.pinkDeep } : {}}>
                     {c.emoji} {c.label}
                   </button>
@@ -658,7 +790,17 @@ function AppInner(): React.JSX.Element {
             </div>
           </header>
 
-          <main className="max-w-xl mx-auto px-4 pt-4">
+          <main id="main-content" className={`${HOME_WIDTH} mx-auto px-4 pt-4`}>
+            {closing && (
+              <div className={`mb-4 p-3.5 rounded-2xl border-2 flex items-start gap-2.5 ${closing.level === "closed" ? "bg-stone-100 border-stone-300" : "bg-amber-50 border-amber-300"}`} role="status">
+                <span className="text-xl leading-none flex-shrink-0">{closing.level === "closed" ? "🚪" : "⏰"}</span>
+                <div className="min-w-0">
+                  <div className={`font-black text-sm ${closing.level === "closed" ? "text-stone-700" : "text-amber-900"}`}>{closing.title}</div>
+                  <div className={`text-xs mt-0.5 leading-relaxed ${closing.level === "closed" ? "text-stone-500" : "text-amber-800"}`}>{closing.body}</div>
+                </div>
+              </div>
+            )}
+
             {settings.emergencyNotice && (
               <div className="mb-4 p-3.5 rounded-2xl bg-red-50 border-2 border-red-300 flex items-start gap-2.5" role="alert">
                 <Megaphone size={18} className="text-red-600 mt-0.5 flex-shrink-0" strokeWidth={2.4} />
@@ -670,7 +812,7 @@ function AppInner(): React.JSX.Element {
               <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-amber-200">
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <span className="text-base">📌</span>
-                  <span className="font-black text-sm" style={{ color: THEME.ink }}>お知らせ掲示板</span>
+                  <span className="font-black text-sm" style={{ color: "var(--ink)" }}>お知らせ掲示板</span>
                   <span className="text-xs text-stone-400">({(settings.notices ?? []).length}件)</span>
                 </div>
                 <div className="space-y-2">
@@ -734,52 +876,103 @@ function AppInner(): React.JSX.Element {
               </button>
             )}
 
+            {booths.length > 0 && <StampRallyCard count={rallyCount} total={booths.length} onReset={resetRally} />}
+
+            <CourseSuggestions courses={courses} onSelect={(id) => setSelectedId(id)} />
+
             <div className="mb-3">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="🔍 ブース名・クラス・教室で検索"
                 className="w-full px-4 py-3 rounded-2xl border-2 bg-white text-sm font-bold outline-none"
-                style={{ borderColor: `${THEME.purple}33`, color: THEME.ink }}
+                style={{ borderColor: `${THEME.purple}33`, color: "var(--ink)" }}
               />
             </div>
 
-            <div className="flex gap-1.5 mb-2">
-              <button onClick={() => setQuickFilter((f) => f === "open" ? "none" : "open")}
-                className={`px-3 py-1.5 rounded-full text-xs font-extrabold border-2 transition-all active:scale-95 ${quickFilter === "open" ? "text-white shadow-md" : "bg-white text-stone-600"}`}
-                style={quickFilter === "open" ? { background: "#10b981", borderColor: "#10b981" } : { borderColor: "#10b98155" }}>
+            {/* 絞り込みは折り返さず1行に収め、企画一覧が下へ押し出されないようにする */}
+            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
+              <FilterChip active={quickFilter === "open"} activeColor="#10b981" onClick={() => setQuickFilter((f) => f === "open" ? "none" : "open")}>
                 🟢 営業中のみ
-              </button>
-              <button onClick={() => setQuickFilter((f) => f === "quick" ? "none" : "quick")}
-                className={`px-3 py-1.5 rounded-full text-xs font-extrabold border-2 transition-all active:scale-95 ${quickFilter === "quick" ? "text-white shadow-md" : "bg-white text-stone-600"}`}
-                style={quickFilter === "quick" ? { background: THEME.orange, borderColor: THEME.orange } : { borderColor: `${THEME.orange}55` }}>
+              </FilterChip>
+              <FilterChip active={quickFilter === "quick"} activeColor={THEME.orange} onClick={() => setQuickFilter((f) => f === "quick" ? "none" : "quick")}>
                 ⚡ すぐ入れる(5分以内)
-              </button>
+              </FilterChip>
+              <FilterChip active={quickFilter === "kids"} activeColor="#0e7490" onClick={() => setQuickFilter((f) => f === "kids" ? "none" : "kids")}>
+                👶 お子さま向け
+              </FilterChip>
             </div>
 
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-xs font-bold" style={{ color: THEME.ink }}>{filtered.length}件のブース</div>
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-xs font-bold bg-white border-2 rounded-full px-3 py-1.5 outline-none" style={{ color: THEME.ink, borderColor: `${THEME.purple}44` }} aria-label="並び順">
-                <option value="default">並び順: デフォルト</option>
-                <option value="wait_asc">空いてる順</option>
-                <option value="wait_desc">混んでる順</option>
-                <option value="favorites">お気に入り</option>
-              </select>
+            {buildingChips.length > 1 && (
+              <div {...buildingPan} className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
+                <span className="flex-shrink-0 text-[11px] font-black text-stone-500">📍今いる棟</span>
+                <FilterChip active={building === "all"} activeColor={THEME.purple} onClick={() => setBuilding("all")}>すべて</FilterChip>
+                {buildingChips.map((b) => (
+                  <FilterChip key={b.id} active={building === b.id} activeColor={THEME.purple} onClick={() => setBuilding(building === b.id ? "all" : b.id)}>
+                    {b.label}
+                  </FilterChip>
+                ))}
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+              <div className="text-xs font-bold" style={{ color: "var(--ink)" }}>{filtered.length}件のブース</div>
+              <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5 bg-white border-2 rounded-full p-0.5" style={{ borderColor: `${THEME.purple}44` }} role="group" aria-label="表示の切り替え">
+                  <button onClick={() => setDensity("compact")} aria-pressed={density === "compact"} aria-label="コンパクト表示" title="コンパクト"
+                    className="w-8 h-7 rounded-full flex items-center justify-center transition-all active:scale-95"
+                    style={density === "compact" ? { background: THEME.purple, color: "#fff" } : { color: "#a8a29e" }}>
+                    <List size={15} strokeWidth={2.8} />
+                  </button>
+                  <button onClick={() => setDensity("rich")} aria-pressed={density === "rich"} aria-label="詳細表示" title="詳細表示"
+                    className="w-8 h-7 rounded-full flex items-center justify-center transition-all active:scale-95"
+                    style={density === "rich" ? { background: THEME.purple, color: "#fff" } : { color: "#a8a29e" }}>
+                    <LayoutGrid size={15} strokeWidth={2.8} />
+                  </button>
+                </div>
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-xs font-bold bg-white border-2 rounded-full px-3 py-1.5 outline-none" style={{ color: "var(--ink)", borderColor: `${THEME.purple}44` }} aria-label="並び順">
+                  <option value="default">並び順: デフォルト</option>
+                  <option value="wait_asc">空いてる順</option>
+                  <option value="wait_desc">混んでる順</option>
+                  <option value="favorites">お気に入り</option>
+                </select>
+              </div>
             </div>
-            <div className="grid grid-cols-1 gap-3.5">
-              {filtered.map((b) => <BoothCard key={b.id} booth={b} onTap={(x) => setSelectedId(x.id)} isFavorite={favorites.includes(b.id)} onToggleFavorite={toggleFavorite} />)}
+
+            {/* お気に入りは絞り込みに関係なく先頭に固定する(いつでもすぐ開けるように) */}
+            {favoriteBooths.length > 0 && sortBy !== "favorites" && (
+              <section className="mb-4 rounded-2xl p-3 border-2 bg-white/70" style={{ borderColor: `${THEME.pink}33` }}>
+                <button onClick={() => setFavOpen((v) => !v)} aria-expanded={favOpen} className="w-full flex items-center gap-2 px-0.5">
+                  <span className="font-black text-sm flex-1 text-left" style={{ color: THEME.pinkDeep }}>♡ お気に入り <span className="text-stone-400 font-bold">({favoriteBooths.length})</span></span>
+                  <ChevronDown size={16} className={`text-stone-400 transition-transform ${favOpen ? "rotate-180" : ""}`} strokeWidth={2.6} />
+                </button>
+                {favOpen && (
+                  <div className={`${gridClass} mt-2.5`}>
+                    {favoriteBooths.map((b) => <BoothCard key={b.id} booth={b} onTap={(x) => setSelectedId(x.id)} isFavorite onToggleFavorite={toggleFavorite} compact={density === "compact"} offline={offline} />)}
+                  </div>
+                )}
+              </section>
+            )}
+
+            <div className={gridClass}>
+              {filtered.map((b) => <BoothCard key={b.id} booth={b} onTap={(x) => setSelectedId(x.id)} isFavorite={favorites.includes(b.id)} onToggleFavorite={toggleFavorite} compact={density === "compact"} offline={offline} />)}
             </div>
             {filtered.length === 0 && (
-              <EmptyState icon={booths.length === 0 ? "🎪" : "🔍"} title={booths.length === 0 ? "まだブースがありません" : "該当する店舗がありません"} message={booths.length === 0 ? "スタッフタブから追加してください" : quickFilter !== "none" ? "「営業中のみ」「すぐ入れる」の絞り込みを外すと全ブースが表示されます" : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます" : "検索語やカテゴリを変えてお試しください"} />
+              <EmptyState icon={booths.length === 0 ? "🎪" : "🔍"} title={booths.length === 0 ? "まだブースがありません" : "該当する店舗がありません"}
+                message={booths.length === 0 ? "スタッフタブから追加してください"
+                  : building !== "all" ? "「今いる棟」の絞り込みを「すべて」に戻すと、ほかの棟の企画も表示されます"
+                  : quickFilter !== "none" ? "「営業中のみ」「すぐ入れる」「お子さま向け」の絞り込みを外すと全ブースが表示されます"
+                  : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます"
+                  : "検索語やカテゴリを変えてお試しください"} />
             )}
-            <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · {STALE_MINUTES}分以上更新がないと「情報が古い」と表示されます</div>
+            <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · 最終同期 {syncLabel} · {STALE_MINUTES}分以上更新がないと「情報が古い」と表示されます</div>
           </main>
         </>
       )}
 
       {/* STAFF */}
       {view === "staff" && (
-        <div className="max-w-xl mx-auto">
+        <div id="main-content" className="max-w-xl mx-auto">
           {!staffAuthed && <StaffLogin onSubmit={handleLogin} busy={busy} onBack={() => setView("home")} />}
           {staffAuthed && staffStageOpen && <StageEditor program={stage} onSave={handleSaveStage} onBack={() => setStaffStageOpen(false)} showToast={showToast} />}
           {staffAuthed && !staffStageOpen && !staffBoothId && (
@@ -804,7 +997,7 @@ function AppInner(): React.JSX.Element {
       {view === "stage" && <StageView program={stage} tick={tick} />}
 
       {/* MAP (guest) */}
-      {view === "map" && <MapView booths={booths} onJump={(id) => setSelectedId(id)} onOpenStage={() => setView("stage")} />}
+      {view === "map" && <MapView booths={booths} onJump={(id) => setSelectedId(id)} onOpenStage={() => setView("stage")} focusBoothId={mapFocusId} />}
 
       {/* 全体お知らせ(ホーム以外でも見えるように、ナビ直上へ常時表示) */}
       {settings.emergencyNotice && view !== "home" && (
