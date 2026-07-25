@@ -155,7 +155,7 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
               )}
             </div>
 
-            <div className="flex items-center gap-1.5 mb-3 overflow-x-auto scrollbar-none">
+            <div className="flex items-center gap-1.5 mb-3 overflow-x-auto scrollbar-none touch-pan-x">
               <QuickPick active={sortKey === "default"} onClick={() => setSortKey("default")}>登録順</QuickPick>
               <QuickPick active={sortKey === "name"} onClick={() => setSortKey("name")}>名前順</QuickPick>
               <QuickPick active={sortKey === "stale"} onClick={() => setSortKey("stale")}>要更新順{staleOpenCount > 0 ? `(${staleOpenCount})` : ""}</QuickPick>
@@ -404,6 +404,8 @@ export const EditBoothSheet = ({ booth, onClose, onSave, onDelete, isNew }: { bo
 
 export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onEdit }: { booth: Booth; onUpdate: (patch: Partial<Booth>) => void; onBack: () => void; onOpenCalculator: () => void; onEdit: () => void }) => {
   const [pulse, setPulse] = useState(false);
+  // 閉店は来場者の画面から待ち時間が消える操作なので、誤タップ防止に確認を挟む
+  const [confirmClose, setConfirmClose] = useState(false);
   const [newProdName, setNewProdName] = useState("");
   const [newProdStock, setNewProdStock] = useState("20");
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -488,12 +490,20 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
           </div>
         )}
 
-        {!booth.isOpen && (
+        {!booth.isOpen ? (
           <button onClick={() => onUpdate({ isOpen: true })}
             className="w-full mb-4 py-4 rounded-2xl text-white active:scale-[0.98] transition-transform shadow-lg"
             style={{ background: "linear-gradient(135deg,#10b981,#059669)" }}>
             <span className="font-black text-base">🟢 開店する（営業中にする）</span>
             <span className="block text-xs font-bold text-white/90 mt-0.5">お客さんの画面に待ち時間が表示されるようになります</span>
+          </button>
+        ) : (
+          // 閉店も同じ位置・同じ大きさで押せるようにする(右上のピルだけでは気づきにくい)
+          <button onClick={() => setConfirmClose(true)}
+            className="w-full mb-4 py-3.5 rounded-2xl border-2 bg-white active:scale-[0.98] transition-transform"
+            style={{ borderColor: "#e7e5e4" }}>
+            <span className="font-black text-base text-stone-700">🔴 閉店する（準備中にもどす）</span>
+            <span className="block text-xs font-bold text-stone-400 mt-0.5">休憩・完売・終了のときに押してください</span>
           </button>
         )}
 
@@ -654,6 +664,17 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
           </div>
         </div>
       </div>
+
+      {confirmClose && (
+        <Confirm
+          title="閉店しますか?"
+          message={`「${booth.name}」を準備中にもどします。来場者の画面では待ち時間が表示されなくなります(人数・在庫はそのまま残ります)。`}
+          confirmLabel="閉店する"
+          danger
+          onConfirm={() => { onUpdate({ isOpen: false }); setConfirmClose(false); }}
+          onCancel={() => setConfirmClose(false)}
+        />
+      )}
     </div>
   );
 };

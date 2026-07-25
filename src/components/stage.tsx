@@ -175,12 +175,12 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
 
   // 会場が2つ以上あるときだけ会場切り替えを表示する
   const VenueTabs = activeVenues.length > 1 ? (
-    <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-3" role="group" aria-label="会場を選択">
+    <div className="flex gap-1.5 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 mb-3" role="group" aria-label="会場を選択">
       {activeVenues.map((v) => (
         <button key={v} type="button" onClick={() => setVenue(v)} aria-pressed={activeVenue === v}
           className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-purple-400 ${activeVenue === v ? "text-white shadow-sm border-transparent" : "bg-white text-stone-600 border-stone-200"}`}
           style={activeVenue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
-          {v === MAIN_STAGE ? "🎤 " : "🎭 "}{v}
+          {v === MAIN_STAGE ? "🎤 " : "🎪 "}{v}
         </button>
       ))}
     </div>
@@ -383,7 +383,7 @@ const StageEmptyBlock = ({ venue, day, dayCount, otherDays, otherVenues, onJumpD
             <button key={`v${v}`} type="button" onClick={() => onJumpVenue(v)}
               className="text-xs font-bold px-3 py-1.5 rounded-full text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-purple-400"
               style={{ background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" }}>
-              {v === MAIN_STAGE ? "🎤 " : "🎭 "}{v}
+              {v === MAIN_STAGE ? "🎤 " : "🎪 "}{v}
             </button>
           ))}
         </div>
@@ -784,7 +784,7 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
     });
     persist(nextItems, undefined, `${venue}・${day}日目の以降の公演を${delta > 0 ? `${delta}分後ろ` : `${-delta}分前`}にずらしました`);
   };
-  const shiftTargetLabel = `${venue}${dayCount > 1 ? `・${day}日目` : ""}`;
+  const shiftTargetLabel = `${venue}${dayCount > 1 ? ` / ${day}日目` : ""}`;
 
   return (
     <div className="pb-28">
@@ -811,14 +811,14 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
 
         {/* 会場切り替え。演劇部・音楽部・放送部など、体育館以外の公演もここで管理する */}
         <div className="mb-1 text-[11px] font-bold text-stone-400">会場を選んで公演を登録できます</div>
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 mb-4" role="group" aria-label="会場を選択">
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 mb-4" role="group" aria-label="会場を選択">
           {venues.map((v) => {
             const count = draft.items.filter((i) => (i.venue || MAIN_STAGE) === v && (i.day || 1) === day).length;
             return (
               <button key={v} type="button" onClick={() => setVenue(v)} aria-pressed={venue === v}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border ${venue === v ? "text-white border-transparent shadow-sm" : "bg-white text-stone-600 border-stone-200"}`}
                 style={venue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
-                {v === MAIN_STAGE ? "🎤 " : "🎭 "}{v}{count > 0 ? `（${count}）` : ""}
+                {v === MAIN_STAGE ? "🎤 " : "🎪 "}{v}{count > 0 ? ` ${count}件` : ""}
               </button>
             );
           })}
@@ -829,7 +829,7 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
             <span className="text-[10px] font-bold text-stone-400">対象</span>
             <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-white" style={{ background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" }}>
-              {venue === MAIN_STAGE ? "🎤 " : "🎭 "}{shiftTargetLabel}
+              {venue === MAIN_STAGE ? "🎤 " : "🎪 "}{shiftTargetLabel}
             </span>
           </div>
           <p className="text-xs text-stone-500 mb-3 leading-relaxed">これから始まる公演の時刻をまとめてずらせます（終了済みは動きません）。</p>
@@ -844,7 +844,7 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
         <button onClick={() => setCreating(true)}
           className="w-full mb-3 flex items-center gap-3 p-4 bg-white rounded-2xl border-2 border-dashed border-stone-300 hover:border-stone-900 active:scale-[0.99] transition-all text-left">
           <div className="w-11 h-11 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><Plus size={20} className="text-stone-700" strokeWidth={2.5} /></div>
-          <div className="flex-1"><div className="font-bold text-stone-900">公演を追加（{venue}{dayCount > 1 ? `・${day}日目` : ""}）</div><div className="text-xs text-stone-500">タイトル・時刻・出演者を登録</div></div>
+          <div className="flex-1"><div className="font-bold text-stone-900">公演を追加</div><div className="text-xs text-stone-500">{venue}{dayCount > 1 ? ` / ${day}日目` : ""} に登録します</div></div>
         </button>
 
         <div className="space-y-2">
@@ -878,7 +878,7 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
           })}
           {items.length === 0 && (
             <div className="text-center text-sm text-stone-400 py-8 bg-white rounded-2xl border border-dashed border-stone-200">
-              「{venue}」の{dayCount > 1 ? `${day}日目の` : ""}公演はまだありません。<br />上の「公演を追加」から登録できます。
+              {venue}{dayCount > 1 ? ` / ${day}日目` : ""} の公演はまだありません。<br />上の「公演を追加」から登録できます。
             </div>
           )}
         </div>
