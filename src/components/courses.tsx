@@ -17,7 +17,7 @@ const CourseRow = ({ course, onSelect }: { course: Course; onSelect: (id: string
         <span className="font-black text-[13px]" style={{ color: "var(--ink)" }}>{course.title}</span>
         <span className="text-[10px] font-bold text-stone-400">{course.note}</span>
       </div>
-      <div {...pan} className="flex gap-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-2 cursor-grab active:cursor-grabbing select-none">
+      <div {...pan} className="flex gap-2 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 pb-2 cursor-grab active:cursor-grabbing select-none">
         {course.booths.map((booth, index) => {
           const status = getStatus(booth.waitMinutes, booth.isOpen);
           return (

@@ -24,6 +24,8 @@ const readRally = (): string[] => {
 export interface StampRally {
   visited: string[];
   record: (id: string) => void;
+  /** 押し間違えたときに取り消せるようにする */
+  remove: (id: string) => void;
   reset: () => void;
 }
 
@@ -39,9 +41,13 @@ export function useStampRally(): StampRally {
     setVisited((prev) => (prev.includes(id) ? prev : [...prev, id]));
   }, []);
 
+  const remove = useCallback((id: string) => {
+    setVisited((prev) => prev.filter((x) => x !== id));
+  }, []);
+
   const reset = useCallback(() => setVisited([]), []);
 
-  return { visited, record, reset };
+  return { visited, record, remove, reset };
 }
 
 export const StampRallyCard = ({ count, total, onReset }: { count: number; total: number; onReset: () => void }) => {
@@ -99,7 +105,7 @@ export const StampRallyCard = ({ count, total, onReset }: { count: number; total
           : justReached
             ? `🎉 ${count}企画達成！この調子でいこう！`
             : count === 0
-              ? "企画の詳細を開くと、自動でスタンプがたまります"
+              ? "企画の詳細で「ここに行った！」を押すとたまります"
               : `あと${Math.max(1, next - count)}企画で ${next}企画達成 🎉`}
       </div>
     </div>

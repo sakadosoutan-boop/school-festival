@@ -96,7 +96,7 @@ function AppInner(): React.JSX.Element {
   const [mapFocusId, setMapFocusId] = useState<string | null>(null);
   // スクロール中はヘッダーの統計カードを畳んで、一覧を早く見せる
   const [headerCompact, setHeaderCompact] = useState(false);
-  const { visited: rallyVisited, record: recordRallyVisit, reset: resetRally } = useStampRally();
+  const { visited: rallyVisited, record: recordRallyVisit, remove: removeRallyVisit, reset: resetRally } = useStampRally();
 
   const [staffPin, setStaffPin] = useState(() => sessionStorage.getItem(SESSION_PIN_KEY) ?? "");
   const [staffRole, setStaffRole] = useState<StaffRole | null>(() => {
@@ -314,10 +314,9 @@ function AppInner(): React.JSX.Element {
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ favorites, onboarded, density, favOpen })); } catch { /* private mode */ }
   }, [density, favOpen, favorites, onboarded]);
 
-  /* ── スタンプラリー: 詳細を開いた企画を、この端末だけに記録する ── */
-  useEffect(() => {
-    if (selectedId && booths.some((b) => b.id === selectedId)) recordRallyVisit(selectedId);
-  }, [booths, recordRallyVisit, selectedId]);
+  /* ── スタンプラリー ──
+     詳細を開いただけでは「回った」とは言えないため、詳細画面のボタンを
+     押したときだけ記録する(記録はこの端末のみ)。 */
 
   /* ── マップの強調表示は数秒で解除する(ずっと光っていると現在地と誤解される) ── */
   useEffect(() => {
@@ -654,7 +653,7 @@ function AppInner(): React.JSX.Element {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Sheets */}
-      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} />}
+      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} stamped={rallyVisited.includes(selectedBooth.id)} onToggleStamp={(id) => { if (rallyVisited.includes(id)) { removeRallyVisit(id); } else { recordRallyVisit(id); showToast("スタンプを押しました！", "success"); } }} />}
       {calcOpen && staffBooth && <CalculatorSheet booth={staffBooth} onClose={() => setCalcOpen(false)} onApply={(u) => { updateBooth(staffBooth.id, u); setCalcOpen(false); showToast(`待ち時間を ${u.waitMinutes}分 に更新しました`); }} />}
       {(editingId || creating) && <EditBoothSheet booth={creating ? null : booths.find((b) => b.id === editingId) ?? null} isNew={creating} onClose={() => { setEditingId(null); setCreating(false); }} onSave={handleSaveBooth} onDelete={() => { if (editingId) void handleDeleteBooth(editingId); }} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
@@ -778,7 +777,7 @@ function AppInner(): React.JSX.Element {
                 className="hidden md:flex absolute right-0.5 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-white/90 shadow-md items-center justify-center text-stone-600 active:scale-95">
                 <ChevronRight size={16} strokeWidth={3} />
               </button>
-              <div {...categoryPan} className="flex gap-1.5 overflow-x-auto scrollbar-none -mx-1 px-1 md:mx-6 cursor-grab active:cursor-grabbing select-none">
+              <div {...categoryPan} className="flex gap-1.5 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 md:mx-6 cursor-grab active:cursor-grabbing select-none">
                 {CATEGORIES.map((c) => (
                   <button key={c.id} onClick={() => setCategory(c.id)}
                     className={`relative flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 before:content-[''] before:absolute before:-inset-y-2 before:inset-x-0 ${category === c.id ? "bg-white shadow-md" : "bg-white/25 text-white backdrop-blur hover:bg-white/40"}`}
@@ -891,7 +890,7 @@ function AppInner(): React.JSX.Element {
             </div>
 
             {/* 絞り込みは折り返さず1行に収め、企画一覧が下へ押し出されないようにする */}
-            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-none -mx-1 px-1 pb-0.5">
+            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 pb-0.5">
               <FilterChip active={quickFilter === "open"} activeColor="#10b981" onClick={() => setQuickFilter((f) => f === "open" ? "none" : "open")}>
                 🟢 営業中のみ
               </FilterChip>
@@ -904,7 +903,7 @@ function AppInner(): React.JSX.Element {
             </div>
 
             {buildingChips.length > 1 && (
-              <div {...buildingPan} className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
+              <div {...buildingPan} className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
                 <span className="flex-shrink-0 text-[11px] font-black text-stone-500">📍今いる棟</span>
                 <FilterChip active={building === "all"} activeColor={THEME.purple} onClick={() => setBuilding("all")}>すべて</FilterChip>
                 {buildingChips.map((b) => (

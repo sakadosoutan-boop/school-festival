@@ -188,7 +188,7 @@ const InfoRow = ({ icon: Icon, label, value, multiline }: { icon: LucideIcon; la
   </div>
 );
 
-export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite, onShowOnMap, offline }: { booth: Booth; onClose: () => void; isFavorite: boolean; onToggleFavorite: (id: string) => void; onShowOnMap?: (booth: Booth) => void; offline?: boolean }) => {
+export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite, onShowOnMap, offline, stamped, onToggleStamp }: { booth: Booth; onClose: () => void; isFavorite: boolean; onToggleFavorite: (id: string) => void; onShowOnMap?: (booth: Booth) => void; offline?: boolean; stamped?: boolean; onToggleStamp?: (id: string) => void }) => {
   const f = freshness(booth);
   const showNumber = booth.isOpen && f !== "very_stale";
   const status = getStatus(booth.waitMinutes, booth.isOpen);
@@ -329,8 +329,18 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite,
           <InfoRow icon={Info} label="紹介" value={booth.description} multiline />
         </div>
 
+        {onToggleStamp && (
+          <button onClick={() => onToggleStamp(booth.id)} aria-pressed={!!stamped}
+            className="w-full mt-5 py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-1.5 active:scale-[0.98] border-2"
+            style={stamped
+              ? { background: "linear-gradient(120deg,#ffd23f,#ff8a3d)", borderColor: "transparent", color: "#fff" }
+              : { background: "var(--surface)", borderColor: `${THEME.purple}55`, color: "var(--ink)" }}>
+            {stamped ? "🎫 スタンプ済み（タップで取り消し）" : "🎫 ここに行った！スタンプを押す"}
+          </button>
+        )}
+
         <button onClick={() => void shareBooth()}
-          className="w-full mt-5 py-3 rounded-2xl border border-stone-200 bg-white text-stone-600 text-sm font-bold flex items-center justify-center gap-1.5 active:scale-[0.98]">
+          className="w-full mt-2.5 py-3 rounded-2xl border border-stone-200 bg-white text-stone-600 text-sm font-bold flex items-center justify-center gap-1.5 active:scale-[0.98]">
           🔗 {copied ? "リンクをコピーしました！" : "このブースを共有"}
         </button>
       </div>

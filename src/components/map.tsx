@@ -162,7 +162,10 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
   const [zoomStep, setZoomStep] = useState<ZoomStep>(() => (
     typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT ? "fit" : 1
   ));
-  const mapWidthPx = zoomStep === "fit" ? fitWidth : Math.round(BASE_MAP_WIDTH * ZOOM_SCALES[zoomStep]);
+  // ピンチ操作中は段階に縛られず連続的に拡大縮小する(ボタン操作でnullに戻す)
+  const [pinchWidth, setPinchWidth] = useState<number | null>(null);
+  const stepWidthPx = zoomStep === "fit" ? fitWidth : Math.round(BASE_MAP_WIDTH * ZOOM_SCALES[zoomStep]);
+  const mapWidthPx = pinchWidth ?? stepWidthPx;
 
   // ズームの前後で画面中央に見えていた地点がずれないよう、変更直前のSVG座標を控えておく
   const centerXRef = useRef<number | null>(null);
@@ -176,9 +179,48 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
     const i = ZOOM_ORDER.indexOf(s);
     return ZOOM_ORDER[Math.max(0, Math.min(ZOOM_ORDER.length - 1, i + delta))] ?? s;
   });
-  const zoomIn = () => { captureCenter(); stepZoom(1); };
-  const zoomOut = () => { captureCenter(); stepZoom(-1); };
-  const zoomFit = () => { captureCenter(); setZoomStep("fit"); };
+  const zoomIn = () => { captureCenter(); setPinchWidth(null); stepZoom(1); };
+  const zoomOut = () => { captureCenter(); setPinchWidth(null); stepZoom(-1); };
+  const zoomFit = () => { captureCenter(); setPinchWidth(null); setZoomStep("fit"); };
+
+  /* ── 2本指のピンチイン/アウト ──
+     ブラウザ標準のページ拡大に取られないよう、要素のtouch-actionでピンチを無効化し、
+     ここで自前に処理する(passive:falseでないとpreventDefaultできないため直接登録)。 */
+  const pinchRef = useRef({ startDist: 0, startWidth: 0, active: false });
+  const widthRef = useRef(mapWidthPx);
+  widthRef.current = mapWidthPx;
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const dist = (t: TouchList) => {
+      const a = t[0], b = t[1];
+      if (!a || !b) return 0;
+      return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    };
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2) return;
+      pinchRef.current = { startDist: dist(e.touches), startWidth: widthRef.current, active: true };
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!pinchRef.current.active || e.touches.length !== 2) return;
+      const d = dist(e.touches);
+      if (d <= 0 || pinchRef.current.startDist <= 0) return;
+      e.preventDefault();
+      const next = pinchRef.current.startWidth * (d / pinchRef.current.startDist);
+      setPinchWidth(Math.round(Math.max(el.clientWidth, Math.min(BASE_MAP_WIDTH * 3, next))));
+    };
+    const onEnd = (e: TouchEvent) => { if (e.touches.length < 2) pinchRef.current.active = false; };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [scrollerRef]);
 
   useLayoutEffect(() => {
     const el = scrollerRef.current;
@@ -308,7 +350,9 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
         <div ref={cardRef} className="rounded-3xl border-2 border-stone-200 bg-white p-3 mb-3 shadow-sm" style={{ scrollMarginTop: 80 }}>
           {/* 地図の表示エリア(このrelativeの中だけにツールバー/FABを重ねる。凡例はこの外に出して、FABと絶対に重ならないようにする) */}
           <div className="relative">
-            <div {...pan} className="overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
+            {/* pan-x pan-y = 指1本のスクロールは通常どおり、ピンチだけ自前で処理する */}
+            <div {...pan} style={{ touchAction: "pan-x pan-y" }}
+              className="overflow-x-auto scrollbar-none -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
               <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} role="img" aria-label="坂戸高校 校内マップ。教室をタップすると企画の詳細が開きます。"
                 style={{ width: "100%", minWidth: mapWidthPx, display: "block" }}>
                 <style>{`
@@ -546,7 +590,7 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
           </div>
         </div>
         <div className="text-[11px] text-stone-400 mb-5 text-center md:hidden">
-          {zoomStep === "fit" ? "全体表示中(ボタンで拡大できます)" : "↔ スワイプかドラッグで動かせます"}
+          {pinchWidth != null ? "ピンチで拡大・縮小中(「全体表示」で元に戻せます)" : zoomStep === "fit" ? "全体表示中 · 2本指のピンチかボタンで拡大できます" : "↔ スワイプ・ドラッグで移動 / 2本指のピンチで拡大・縮小"}
         </div>
 
         <div className="space-y-4 max-w-xl mx-auto">
