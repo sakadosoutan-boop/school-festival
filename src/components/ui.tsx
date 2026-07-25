@@ -1,8 +1,8 @@
-import { useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Info, Minus, Plus, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Minus, Monitor, Moon, Plus, Sun, Type, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { freshness, THEME } from "../lib/festival";
+import { freshness } from "../lib/festival";
 import type { Booth } from "../types";
 
 /* 横スクロール領域をPCのマウスでもドラッグで動かせるようにする。
@@ -74,6 +74,7 @@ export const BoothIcon = ({ booth, size = 56, rounded = 16, emojiClass = "text-4
   if (booth.iconImage) {
     return (
       <img src={booth.iconImage} alt={booth.name || "icon"}
+        loading="lazy" decoding="async"
         style={{ width: size, height: size, borderRadius: rounded, objectFit: "cover" }}
         className="flex-shrink-0" />
     );
@@ -83,6 +84,9 @@ export const BoothIcon = ({ booth, size = 56, rounded = 16, emojiClass = "text-4
 
 export const IconButton = ({ icon: Icon, onClick, label, variant = "ghost", size = "md" }: { icon: LucideIcon; onClick?: () => void; label: string; variant?: "ghost" | "solid" | "soft"; size?: "sm" | "md" | "lg" }) => {
   const sizes = { sm: "w-8 h-8", md: "w-10 h-10", lg: "w-12 h-12" };
+  // 見た目のサイズ(32px/40px)は変えず、::beforeで44px相当までタップ領域だけ広げる。
+  // lg(48px)は既に44px以上あるので広げない。
+  const hitArea = { sm: "before:content-[''] before:absolute before:-inset-1.5", md: "before:content-[''] before:absolute before:-inset-0.5", lg: "" };
   const variants = {
     ghost: "hover:bg-stone-100 text-stone-700",
     solid: "bg-stone-900 text-white hover:bg-stone-800",
@@ -90,7 +94,7 @@ export const IconButton = ({ icon: Icon, onClick, label, variant = "ghost", size
   };
   return (
     <button onClick={onClick} aria-label={label}
-      className={`${sizes[size]} ${variants[variant]} rounded-full flex items-center justify-center transition-all active:scale-95`}>
+      className={`relative ${sizes[size]} ${variants[variant]} ${hitArea[size]} rounded-full flex items-center justify-center transition-all active:scale-95`}>
       <Icon size={size === "sm" ? 16 : size === "lg" ? 22 : 18} strokeWidth={2} />
     </button>
   );
@@ -204,7 +208,7 @@ export const Sheet = ({ onClose, title, children }: { onClose: () => void; title
     };
   }, []);
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end print:hidden" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
       <div
         className="w-full max-w-xl mx-auto bg-stone-50 rounded-t-3xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -242,15 +246,21 @@ export const Toast = ({ message, type = "success" }: { message: string; type?: T
   const c = map[type];
   const Icon = c.icon;
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-white font-bold text-sm max-w-[90vw]"
-      style={{ backgroundColor: c.bg, animation: "slideDown 0.25s cubic-bezier(0.16,1,0.3,1)" }} role="status">
-      <Icon size={18} strokeWidth={2.5} /><span>{message}</span>
+    // ラッパーはpointer-events-noneにして、画面幅いっぱいの透明な帯がタップを奪わないようにする。
+    // 位置は上部固定ヘッダー(スタッフ画面のブース名など)と被らないよう、ボトムナビの上に表示する。
+    <div className="fixed inset-x-0 z-[100] flex justify-center px-4 pointer-events-none print:hidden"
+      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}>
+      <div className="pointer-events-auto px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-white font-bold text-sm max-w-[90vw]"
+        style={{ backgroundColor: c.bg, animation: "slideUp 0.25s cubic-bezier(0.16,1,0.3,1)" }}
+        role="status" aria-live="polite" aria-atomic="true">
+        <Icon size={18} strokeWidth={2.5} /><span>{message}</span>
+      </div>
     </div>
   );
 };
 
 export const Confirm = ({ title, message, confirmLabel = "OK", danger, onConfirm, onCancel }: { title: string; message: string; confirmLabel?: string; danger?: boolean; onConfirm: () => void; onCancel: () => void }) => (
-  <div className="fixed inset-0 z-[60] flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onCancel}>
+  <div className="fixed inset-0 z-[60] flex items-center justify-center px-6 print:hidden" style={{ background: "rgba(0,0,0,0.55)" }} onClick={onCancel}>
     <div className="bg-white rounded-3xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}
       style={{ animation: "slideUp 0.2s cubic-bezier(0.16,1,0.3,1)" }} role="alertdialog" aria-label={title}>
       <div className={`w-12 h-12 mx-auto rounded-2xl flex items-center justify-center mb-3 ${danger ? "bg-red-50" : "bg-stone-100"}`}>
@@ -259,8 +269,8 @@ export const Confirm = ({ title, message, confirmLabel = "OK", danger, onConfirm
       <h3 className="text-lg font-black text-stone-900 text-center mb-1">{title}</h3>
       <p className="text-sm text-stone-500 text-center mb-5 leading-relaxed">{message}</p>
       <div className="flex gap-2">
-        <button onClick={onCancel} className="flex-1 py-3 rounded-2xl border border-stone-200 font-bold text-sm bg-white active:scale-95">キャンセル</button>
-        <button onClick={onConfirm} className={`flex-1 py-3 rounded-2xl text-white font-bold text-sm active:scale-95 ${danger ? "bg-red-600" : "bg-stone-900"}`}>{confirmLabel}</button>
+        <button onClick={onCancel} className="flex-1 min-h-11 py-3 rounded-2xl border border-stone-200 font-bold text-sm bg-white active:scale-95">キャンセル</button>
+        <button onClick={onConfirm} className={`flex-1 min-h-11 py-3 rounded-2xl text-white font-bold text-sm active:scale-95 ${danger ? "bg-red-600" : "bg-stone-900"}`}>{confirmLabel}</button>
       </div>
     </div>
   </div>
@@ -270,7 +280,7 @@ export const StaleBadge = ({ booth }: { booth: Booth }) => {
   const f = freshness(booth);
   if (f === "fresh") return null;
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-200">
       <AlertTriangle size={10} strokeWidth={2.5} />
       {f === "very_stale" ? "情報が古い" : "更新待ち"}
     </span>
@@ -279,18 +289,18 @@ export const StaleBadge = ({ booth }: { booth: Booth }) => {
 
 export const StatCard = ({ label, value, unit }: { label: string; value: string; unit?: string }) => (
   <div className="bg-white/90 backdrop-blur rounded-2xl px-3 py-2 shadow-sm">
-    <div className="text-[10px] font-bold" style={{ color: "#9b5de5" }}>{label}</div>
-    <div className="flex items-baseline gap-0.5 mt-0.5"><span className="text-lg font-black tabular-nums" style={{ color: "#3b1f4f" }}>{value}</span>{unit && <span className="text-[10px] font-bold text-stone-500">{unit}</span>}</div>
+    <div className="text-xs font-bold" style={{ color: "#9b5de5" }}>{label}</div>
+    <div className="flex items-baseline gap-0.5 mt-0.5"><span className="text-lg font-black tabular-nums" style={{ color: "#3b1f4f" }}>{value}</span>{unit && <span className="text-xs font-bold text-stone-500">{unit}</span>}</div>
   </div>
 );
 
 export const TabButton = ({ active, icon: Icon, label, onClick }: { active: boolean; icon: LucideIcon; label: string; onClick: () => void }) => (
-  <button onClick={onClick} className="flex-1 flex flex-col items-center justify-center gap-0.5 py-1.5">
+  <button onClick={onClick} className="flex-1 min-h-11 flex flex-col items-center justify-center gap-0.5 py-1.5">
     <div className="flex items-center justify-center w-12 h-8 rounded-full transition-all"
       style={active ? { background: "linear-gradient(135deg,#ff4d8d,#9b5de5)" } : {}}>
       <Icon size={20} strokeWidth={active ? 2.6 : 2} className={active ? "text-white" : "text-stone-400"} />
     </div>
-    <span className="text-[10px] font-extrabold" style={{ color: active ? "#e6206b" : "#a8a29e" }}>{label}</span>
+    <span className="text-xs font-extrabold" style={{ color: active ? "#e6206b" : "#a8a29e" }}>{label}</span>
   </button>
 );
 
@@ -312,19 +322,19 @@ export const NumberStepper = ({ value, onChange, min, max, step, unit, display }
 );
 
 export const QuickPick = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) => (
-  <button onClick={onClick} className={`py-2 px-1 text-xs font-bold rounded-xl border transition-colors ${active ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-700 border-stone-200 hover:border-stone-300"}`}>{children}</button>
+  <button onClick={onClick} className={`min-h-11 py-2 px-1 text-xs font-bold rounded-xl border transition-colors ${active ? "bg-stone-900 text-white border-stone-900" : "bg-white text-stone-700 border-stone-200 hover:border-stone-300"}`}>{children}</button>
 );
 
 export const Field = ({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) => (
   <div><label className="block text-xs font-bold text-stone-700 mb-1.5">{label} {required && <span className="text-red-600">*</span>}</label>{children}</div>
 );
-export const Hint = ({ children }: { children: ReactNode }) => <div className="text-[11px] text-stone-400 mt-1.5">{children}</div>;
+export const Hint = ({ children }: { children: ReactNode }) => <div className="text-xs text-stone-400 mt-1.5">{children}</div>;
 
 /* ドラムロール式ピッカー(縦スクロールスナップ) */
 export const Wheel = ({ label, options, value, onChange, suffix = "" }: { label: string; options: number[]; value: number; onChange: (v: number) => void; suffix?: string }) => {
   const ref = useRef<HTMLDivElement | null>(null);
   const timer = useRef<number | null>(null);
-  const ITEM_H = 40;
+  const ITEM_H = 44; // 各行のタップ領域を44px確保する(連続配置なので重なりの心配がない)
   const idx = Math.max(0, options.indexOf(value));
 
   useEffect(() => {
@@ -347,7 +357,7 @@ export const Wheel = ({ label, options, value, onChange, suffix = "" }: { label:
 
   return (
     <div className="flex-1">
-      <div className="text-[10px] font-bold text-stone-400 text-center mb-1">{label}</div>
+      <div className="text-xs font-bold text-stone-400 text-center mb-1">{label}</div>
       <div className="relative" style={{ height: ITEM_H * 3 }}>
         <div className="absolute inset-x-1 rounded-xl pointer-events-none" style={{ top: ITEM_H, height: ITEM_H, background: "linear-gradient(135deg,#ff4d8d22,#9b5de522)", border: "1.5px solid #ff4d8d55" }} />
         <div ref={ref} onScroll={onScroll}
@@ -358,7 +368,7 @@ export const Wheel = ({ label, options, value, onChange, suffix = "" }: { label:
             <div key={o}
               onClick={() => { onChange(o); }}
               className="snap-center flex items-center justify-center font-black tabular-nums cursor-pointer transition-all"
-              style={{ height: ITEM_H, color: o === value ? THEME.ink : "#c4bcc9", fontSize: o === value ? 22 : 17 }}>
+              style={{ height: ITEM_H, color: o === value ? "var(--ink)" : "var(--ink-faint)", fontSize: o === value ? 22 : 17 }}>
               {o}{suffix}
             </div>
           ))}
@@ -371,8 +381,122 @@ export const Wheel = ({ label, options, value, onChange, suffix = "" }: { label:
 
 export const TimeStepper = ({ value, onMinus, onPlus }: { value: string; onMinus: () => void; onPlus: () => void }) => (
   <div className="flex items-center gap-1.5">
-    <button onClick={onMinus} className="w-10 h-12 rounded-xl bg-stone-100 flex items-center justify-center active:scale-95" aria-label="5分早める"><Minus size={16} strokeWidth={3} className="text-stone-700" /></button>
+    <button onClick={onMinus} className="w-11 h-12 rounded-xl bg-stone-100 flex items-center justify-center active:scale-95" aria-label="5分早める"><Minus size={16} strokeWidth={3} className="text-stone-700" /></button>
     <div className="flex-1 text-center bg-stone-50 rounded-xl py-3 border border-stone-100"><span className="text-xl font-black text-stone-900 tabular-nums">{value}</span></div>
-    <button onClick={onPlus} className="w-10 h-12 rounded-xl bg-stone-100 flex items-center justify-center active:scale-95" aria-label="5分遅らせる"><Plus size={16} strokeWidth={3} className="text-stone-700" /></button>
+    <button onClick={onPlus} className="w-11 h-12 rounded-xl bg-stone-100 flex items-center justify-center active:scale-95" aria-label="5分遅らせる"><Plus size={16} strokeWidth={3} className="text-stone-700" /></button>
   </div>
+);
+
+/* ═══════════ 夜間モード(ダークモード) ═══════════
+   「自動(端末設定に従う)/ライト/ダーク」の3値。実際の明暗切替はhtml要素への
+   .darkクラス付与で行い、見た目はstyles.cssのCSS変数・クラス上書きが担う。
+   index.htmlの初期化スクリプトが初回描画前に同じロジックでクラスを当てるため、
+   ここではlocalStorageと現在のクラス状態を読み合わせるだけでチラつきが出ない。 */
+export type ThemeMode = "auto" | "light" | "dark";
+const THEME_STORAGE_KEY = "machitime:v6:theme";
+
+function prefersDarkOS(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function resolveIsDark(mode: ThemeMode): boolean {
+  if (mode === "dark") return true;
+  if (mode === "light") return false;
+  return prefersDarkOS();
+}
+
+function readStoredTheme(): ThemeMode {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "light" || stored === "dark" || stored === "auto" ? stored : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function useTheme(): { mode: ThemeMode; isDark: boolean; setMode: (m: ThemeMode) => void; cycle: () => void } {
+  const [mode, setModeState] = useState<ThemeMode>(readStoredTheme);
+  const [isDark, setIsDark] = useState(() => resolveIsDark(mode));
+
+  useEffect(() => {
+    const apply = () => {
+      const dark = resolveIsDark(mode);
+      document.documentElement.classList.toggle("dark", dark);
+      setIsDark(dark);
+    };
+    apply();
+    try { localStorage.setItem(THEME_STORAGE_KEY, mode); } catch { /* プライベートモード等では保存できないが表示は継続する */ }
+    // 「自動」のときだけOS側のテーマ変更をライブで追従させる
+    if (mode !== "auto" || typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [mode]);
+
+  const setMode = useCallback((next: ThemeMode) => setModeState(next), []);
+  const cycle = useCallback(() => setModeState((m) => (m === "auto" ? "light" : m === "light" ? "dark" : "auto")), []);
+  return { mode, isDark, setMode, cycle };
+}
+
+export const ThemeToggle = () => {
+  const { mode, cycle } = useTheme();
+  const Icon = mode === "dark" ? Moon : mode === "light" ? Sun : Monitor;
+  const label = mode === "dark" ? "夜間モード" : mode === "light" ? "昼間モード" : "自動(端末の設定に従う)";
+  return (
+    <button
+      onClick={cycle}
+      aria-label={`表示テーマ: ${label}。タップで切り替え`}
+      title={label}
+      className="relative w-10 h-10 rounded-full flex items-center justify-center bg-stone-100 text-stone-700 transition-all active:scale-95 before:content-[''] before:absolute before:-inset-0.5"
+    >
+      <Icon size={18} strokeWidth={2.2} />
+    </button>
+  );
+};
+
+/* ═══════════ 文字を大きく(拡大表示)モード ═══════════ */
+const TEXT_SCALE_STORAGE_KEY = "machitime:v6:textScale";
+
+function readStoredTextScale(): boolean {
+  try { return localStorage.getItem(TEXT_SCALE_STORAGE_KEY) === "1"; } catch { return false; }
+}
+
+export function useTextScale(): { enlarged: boolean; toggle: () => void; setEnlarged: (v: boolean) => void } {
+  const [enlarged, setEnlargedState] = useState<boolean>(readStoredTextScale);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle("text-lg-mode", enlarged);
+    try { localStorage.setItem(TEXT_SCALE_STORAGE_KEY, enlarged ? "1" : "0"); } catch { /* プライベートモード等では保存できないが表示は継続する */ }
+  }, [enlarged]);
+
+  const setEnlarged = useCallback((v: boolean) => setEnlargedState(v), []);
+  const toggle = useCallback(() => setEnlargedState((v) => !v), []);
+  return { enlarged, toggle, setEnlarged };
+}
+
+// 他画面(ヘルプシート等)にそのまま埋め込める、状態を持たない完結したトグルUI
+export const TextScaleToggle = () => {
+  const { enlarged, toggle } = useTextScale();
+  return (
+    <button
+      onClick={toggle}
+      aria-pressed={enlarged}
+      className="min-h-11 inline-flex items-center gap-1.5 px-4 rounded-full border-2 text-xs font-bold transition-colors active:scale-95"
+      style={enlarged
+        ? { background: "#1c1917", color: "#fff", borderColor: "#1c1917" }
+        : { background: "var(--surface)", color: "var(--ink-soft)", borderColor: "var(--line)" }}
+    >
+      <Type size={16} strokeWidth={2.4} />
+      文字を大きく{enlarged ? "（解除）" : "（拡大表示）"}
+    </button>
+  );
+};
+
+/* ═══════════ スキップリンク ═══════════
+   フォーカスが当たるまでは画面外に隠れ、Tabキー最初の1押しで先頭に現れる。
+   ジャンプ先の#main-contentは呼び出し側(App.tsx)のメインコンテンツ要素に
+   付与してもらう必要がある。 */
+export const SkipLink = () => (
+  <a href="#main-content" className="skip-link">本文へスキップ</a>
 );

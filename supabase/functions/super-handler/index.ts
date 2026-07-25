@@ -225,6 +225,7 @@ function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
     room: str(raw.room, 20),
     location: str(raw.location, 120),
     description: str(raw.description, 120),
+    kidsFriendly: bool(raw.kidsFriendly, false),
     isOpen: bool(raw.isOpen, true),
     peopleInLine,
     capacity,

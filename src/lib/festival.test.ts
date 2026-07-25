@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, daysUntilFestival, formatLocation, isSoldOut,
-  itemStatus, makeBooth, makeStageItem, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage, seedBooths,
-  seedStage, sortItems, toMin, todayFestivalDay,
+  itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage,
+  seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, summarizeBooths, toMin,
+  todayFestivalDay, undoSecondsLeft,
 } from "./festival";
 import type { Booth } from "../types";
 
@@ -212,5 +213,135 @@ describe("stage venues", () => {
     expect(program.items[1]!.venue).toBe("体育館ステージ"); // 未指定は既定会場
     expect(program.venues).toContain("演劇部（視聴覚室）");
     expect(program.venues[0]).toBe("体育館ステージ");
+  });
+});
+
+describe("kidsFriendly (小さなお子さま向け)", () => {
+  it("defaults to false when absent, and reflects an explicit true", () => {
+    expect(makeBooth({ name: "お化け屋敷" }).kidsFriendly).toBe(false);
+    expect(makeBooth({ name: "こども縁日", kidsFriendly: true }).kidsFriendly).toBe(true);
+    expect(makeBooth({ name: "肝試し", kidsFriendly: false }).kidsFriendly).toBe(false);
+  });
+
+  it("coerces non-boolean legacy/corrupted values back to the false default", () => {
+    const corrupted = makeBooth({ name: "テスト", kidsFriendly: "yes" as unknown as boolean });
+    expect(corrupted.kidsFriendly).toBe(false);
+  });
+
+  it("round-trips true through makeBooth a second time (server echo / re-save pattern)", () => {
+    const first = makeBooth({ name: "わたあめ", kidsFriendly: true }, "b1");
+    const second = makeBooth(first, "b1");
+    expect(second.kidsFriendly).toBe(true);
+  });
+});
+
+describe("serveBlockedReason", () => {
+  it("explains why 「◯人ご案内しました」 is disabled, and returns null once it is enabled", () => {
+    expect(serveBlockedReason({ isOpen: false, peopleInLine: 5 })).toBe("開店すると押せます");
+    expect(serveBlockedReason({ isOpen: true, peopleInLine: 0 })).toBe("列に人がいません");
+    expect(serveBlockedReason({ isOpen: true, peopleInLine: 3 })).toBeNull();
+  });
+
+  it("prioritizes the 準備中 reason over the empty-queue reason when both apply", () => {
+    expect(serveBlockedReason({ isOpen: false, peopleInLine: 0 })).toBe("開店すると押せます");
+  });
+});
+
+describe("undoSecondsLeft", () => {
+  it("returns 0 when there is no snapshot to undo", () => {
+    expect(undoSecondsLeft(null)).toBe(0);
+  });
+
+  it("counts down from the 60-second window and clamps at 0 once expired", () => {
+    const now = 1_000_000;
+    const snapshot = { peopleInLine: 3, cycleHistory: [], lastServedAt: null, waitMinutes: 5, ts: now };
+    expect(undoSecondsLeft(snapshot, now)).toBe(60);
+    expect(undoSecondsLeft(snapshot, now + 45_000)).toBe(15);
+    expect(undoSecondsLeft(snapshot, now + 59_999)).toBe(1);
+    expect(undoSecondsLeft(snapshot, now + 60_000)).toBe(0);
+    expect(undoSecondsLeft(snapshot, now + 120_000)).toBe(0);
+  });
+});
+
+describe("matchesBoothQuery", () => {
+  const booth = makeBooth({ name: "お化け屋敷", orgType: "class", grade: 2, classNum: 6, room: "301" }, "b1");
+
+  it("matches everything when the query is empty or blank", () => {
+    expect(matchesBoothQuery(booth, "")).toBe(true);
+    expect(matchesBoothQuery(booth, "   ")).toBe(true);
+  });
+
+  it("matches by name, class display (2年6組), and room, case-insensitively", () => {
+    expect(matchesBoothQuery(booth, "お化け")).toBe(true);
+    expect(matchesBoothQuery(booth, "2年6組")).toBe(true);
+    expect(matchesBoothQuery(booth, "301")).toBe(true);
+  });
+
+  it("returns false when nothing matches", () => {
+    expect(matchesBoothQuery(booth, "たこ焼き")).toBe(false);
+  });
+});
+
+describe("sortBoothsForStaff", () => {
+  const now = 2_000_000;
+  // あ→か→さ の順は漢字/コードポイントどちらの比較でも一意に決まるため、テストが並び替えの実装に依存しすぎない
+  const a = makeBooth({ name: "さくら", isOpen: true, lastUpdated: now - 5_000 }, "a");
+  const b = makeBooth({ name: "あさがお", isOpen: true, lastUpdated: now - 999_000 }, "b");
+  const c = makeBooth({ name: "かきごおり", isOpen: false, lastUpdated: now - 5_000_000 }, "c");
+
+  it("keeps the original array order for the default key", () => {
+    expect(sortBoothsForStaff([a, b, c], "default", now)).toEqual([a, b, c]);
+  });
+
+  it("sorts by Japanese name order for the name key", () => {
+    const sorted = sortBoothsForStaff([a, b, c], "name", now);
+    expect(sorted.map((x) => x.id)).toEqual(["b", "c", "a"]); // あさがお・かきごおり・さくら
+  });
+
+  it("puts the longest-untouched OPEN booth first, sinking closed booths to the bottom", () => {
+    const sorted = sortBoothsForStaff([a, b, c], "stale", now);
+    expect(sorted.map((x) => x.id)).toEqual(["b", "a", "c"]);
+  });
+});
+
+describe("summarizeBooths", () => {
+  const now = 3_000_000;
+  const busy = makeBooth({ name: "射的", isOpen: true, peopleInLine: 20, capacity: 2, cycleSeconds: 180, lastUpdated: now }, "busy");
+  const quiet = makeBooth({ name: "輪投げ", isOpen: true, peopleInLine: 0, lastUpdated: now }, "quiet");
+  const stale = makeBooth({ name: "お化け屋敷", isOpen: true, peopleInLine: 2, lastUpdated: now - 20 * 60_000 }, "stale");
+  const closed = makeBooth({ name: "準備中の出し物", isOpen: false, lastUpdated: now - 999 * 60_000 }, "closed");
+  const soldOutPartial = makeBooth({
+    name: "たこ焼き", isOpen: true, lastUpdated: now,
+    products: [{ id: "p1", name: "たこ焼き", stock: 0, soldOut: false }, { id: "p2", name: "飲み物", stock: 5, soldOut: false }],
+  }, "partial");
+  const soldOutAll = makeBooth({
+    name: "クレープ", isOpen: true, lastUpdated: now,
+    products: [{ id: "p3", name: "クレープ", stock: 0, soldOut: false }],
+  }, "full");
+  const booths = [busy, quiet, stale, closed, soldOutPartial, soldOutAll];
+
+  it("counts open vs closed booths", () => {
+    const summary = summarizeBooths(booths, now);
+    expect(summary.totalCount).toBe(6);
+    expect(summary.openCount).toBe(5);
+    expect(summary.closedCount).toBe(1);
+  });
+
+  it("ranks open booths with an active queue by wait time, excluding empty queues and closed booths", () => {
+    const summary = summarizeBooths(booths, now);
+    expect(summary.topWait[0]?.id).toBe("busy");
+    expect(summary.topWait.some((b) => b.id === "quiet")).toBe(false);
+    expect(summary.topWait.some((b) => b.id === "closed")).toBe(false);
+  });
+
+  it("lists only OPEN booths stale beyond STALE_MINUTES, oldest update first", () => {
+    const summary = summarizeBooths(booths, now);
+    expect(summary.staleBooths.map((b) => b.id)).toEqual(["stale"]);
+  });
+
+  it("finds booths with any sold-out product, and separately counts fully-sold-out booths", () => {
+    const summary = summarizeBooths(booths, now);
+    expect(summary.soldOutBooths.map((b) => b.id).sort()).toEqual(["full", "partial"]);
+    expect(summary.fullySoldOutCount).toBe(1);
   });
 });

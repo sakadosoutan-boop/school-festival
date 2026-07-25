@@ -30,6 +30,8 @@ export interface Booth {
   room: string;
   location: string; // 旧データ互換(自由入力)
   description: string;
+  // 小さなお子さま向け企画かどうか(任意・既定false)。ゲスト側のバッジ表示用(このアプリでは編集のみ扱う)。
+  kidsFriendly?: boolean;
   isOpen: boolean;
   peopleInLine: number;
   capacity: number;

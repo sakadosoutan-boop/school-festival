@@ -192,6 +192,22 @@ export const computeTrend = (history: Booth["history"]): { dir: "flat" | "up" | 
   return { dir: delta > 0 ? "up" : "down", delta };
 };
 
+// 「◯人ご案内しました」ボタンが押せない理由(押せるときはnull)。スタッフ画面にそのまま文言を出す。
+export const serveBlockedReason = (booth: Pick<Booth, "isOpen" | "peopleInLine">): string | null => {
+  if (!booth.isOpen) return "開店すると押せます";
+  if (booth.peopleInLine <= 0) return "列に人がいません";
+  return null;
+};
+
+// 誤タップの取り消しができる猶予時間。スタッフ画面の「1分以内なら…」という案内と揃える。
+export const UNDO_WINDOW_MS = 60_000;
+// undoSnapshotが有効な残り秒数(取り消せないときは0)。カウントダウン表示に使う。
+export const undoSecondsLeft = (undoSnapshot: Booth["undoSnapshot"], now = Date.now()): number => {
+  if (!undoSnapshot) return 0;
+  const remain = UNDO_WINDOW_MS - (now - undoSnapshot.ts);
+  return remain > 0 ? Math.ceil(remain / 1000) : 0;
+};
+
 /* ═══════════ DATA MODEL ═══════════ */
 
 export function makeBooth(partial: unknown, id?: string): Booth {
@@ -204,6 +220,7 @@ export function makeBooth(partial: unknown, id?: string): Booth {
     building: "hr", floor: 1, room: "",
     location: "",
     description: "",
+    kidsFriendly: false,
     isOpen: true,
     peopleInLine: 0, capacity: 2, cycleSeconds: 180,
     waitMinutes: 0,
@@ -241,6 +258,7 @@ export function makeBooth(partial: unknown, id?: string): Booth {
   merged.room = str(merged.room);
   merged.location = str(merged.location);
   merged.description = str(merged.description);
+  merged.kidsFriendly = bool(merged.kidsFriendly, false);
   merged.isOpen = bool(merged.isOpen, true);
   merged.peopleInLine = Math.max(0, num(merged.peopleInLine, 0));
   merged.capacity = Math.max(1, num(merged.capacity, 2));
@@ -372,4 +390,69 @@ export const boothsForRoom = (booths: Booth[], name: string): Booth[] => {
   return booths.filter((bt) =>
     normRoom(bt.room) === cn ||
     (bt.orgType === "class" && bt.building !== "outdoor" && `${bt.grade}-${bt.classNum}` === cn));
+};
+
+/* ═══════════ STAFF TRIAGE HELPERS(スタッフ一覧・運営ダッシュボード) ═══════════ */
+
+// スタッフ一覧の検索: ブース名・運営団体(クラス表記含む)・部屋名・場所表示のいずれかに一致すればヒット。
+// 43団体の中から班長が自分のブースを素早く探せるようにするための緩い部分一致。
+export const matchesBoothQuery = (booth: Booth, query: string): boolean => {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const haystack = [booth.name, formatOrganizer(booth), booth.room, formatLocation(booth)]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
+};
+
+export type StaffSortKey = "default" | "name" | "stale";
+
+// スタッフ一覧の並び替え。「default」は登録順(渡された配列の順序)のまま返す。
+export const sortBoothsForStaff = (booths: Booth[], key: StaffSortKey, now = Date.now()): Booth[] => {
+  if (key === "default") return booths;
+  const indexed = booths.map((booth, index) => ({ booth, index }));
+  if (key === "name") {
+    indexed.sort((a, b) => a.booth.name.localeCompare(b.booth.name, "ja") || a.index - b.index);
+  } else {
+    // stale: 準備中(未公開)は急いで更新する必要がないため最後尾へ。営業中だけを更新が古い順に並べる。
+    indexed.sort((a, b) => {
+      const staleA = a.booth.isOpen ? now - a.booth.lastUpdated : -Infinity;
+      const staleB = b.booth.isOpen ? now - b.booth.lastUpdated : -Infinity;
+      return staleB - staleA || a.index - b.index;
+    });
+  }
+  return indexed.map((entry) => entry.booth);
+};
+
+export interface BoothDashboardSummary {
+  totalCount: number;
+  openCount: number;
+  closedCount: number;
+  topWait: Booth[];
+  staleBooths: Booth[];
+  soldOutBooths: Booth[];
+  fullySoldOutCount: number;
+}
+
+// 実行委員が当日ざっと状況を確認するための集計。渡されたbooths配列だけから計算し、新規のAPI呼び出しは行わない。
+export const summarizeBooths = (booths: Booth[], now = Date.now()): BoothDashboardSummary => {
+  const openBooths = booths.filter((b) => b.isOpen);
+  const topWait = openBooths
+    .filter((b) => b.waitMinutes > 0)
+    .sort((a, b) => b.waitMinutes - a.waitMinutes)
+    .slice(0, 5);
+  const staleBooths = openBooths
+    .filter((b) => (now - b.lastUpdated) / 60_000 >= STALE_MINUTES)
+    .sort((a, b) => a.lastUpdated - b.lastUpdated);
+  const soldOutBooths = booths.filter((b) => (b.products || []).some(isSoldOut));
+  const fullySoldOutCount = booths.filter((b) => allSoldOut(b)).length;
+  return {
+    totalCount: booths.length,
+    openCount: openBooths.length,
+    closedCount: booths.length - openBooths.length,
+    topWait,
+    staleBooths,
+    soldOutBooths,
+    fullySoldOutCount,
+  };
 };
