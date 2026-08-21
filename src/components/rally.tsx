@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { RotateCcw, Ticket } from "lucide-react";
+import { Award, RotateCcw, Ticket } from "lucide-react";
 import { THEME } from "../lib/festival";
+import { RallyCertificate, RankBadge, rallyRank } from "./celebrate";
 
 /* ═══════════ スタンプラリー ═══════════
    企画の詳細を開くと、この端末だけに「回った企画」として記録する。
@@ -52,6 +53,8 @@ export function useStampRally(): StampRally {
 
 export const StampRallyCard = ({ count, total, onReset }: { count: number; total: number; onReset: () => void }) => {
   const [confirming, setConfirming] = useState(false);
+  const [certOpen, setCertOpen] = useState(false);
+  const rank = rallyRank(count, total);
   const goal = Math.max(1, total);
   const percent = Math.min(100, Math.round((count / goal) * 100));
   const complete = total > 0 && count >= total;
@@ -76,9 +79,10 @@ export const StampRallyCard = ({ count, total, onReset }: { count: number; total
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-xs font-black" style={{ color: celebrating ? "#ffffffdd" : THEME.purple }}>🎫 スタンプラリー</div>
-          <div className="font-black text-base leading-tight" style={{ color: celebrating ? "#fff" : THEME.ink }}>
+          <div className="font-black text-base leading-tight" style={{ color: celebrating ? "#fff" : "var(--ink)" }}>
             回った企画 <span className="tabular-nums">{count}</span>/<span className="tabular-nums">{total}</span>
           </div>
+          <div className="mt-1"><RankBadge rank={rank} /></div>
         </div>
         {count > 0 && (
           <button
@@ -106,8 +110,19 @@ export const StampRallyCard = ({ count, total, onReset }: { count: number; total
             ? `🎉 ${count}企画達成！この調子でいこう！`
             : count === 0
               ? "企画の詳細で「ここに行った！」を押すとたまります"
-              : `あと${Math.max(1, next - count)}企画で ${next}企画達成 🎉`}
+              : rank.next != null
+                ? `あと${Math.max(1, rank.next - count)}企画で「${rank.nextTitle}」になれる 🎉`
+                : `あと${Math.max(1, next - count)}企画で ${next}企画達成 🎉`}
       </div>
+
+      {complete && (
+        <button onClick={() => setCertOpen(true)}
+          className="relative w-full mt-2.5 py-2.5 rounded-xl bg-white/90 text-sm font-black flex items-center justify-center gap-1.5 active:scale-95"
+          style={{ color: THEME.orange }}>
+          <Award size={16} strokeWidth={2.6} /> 認定証を見る
+        </button>
+      )}
+      {certOpen && <RallyCertificate count={count} total={total} onClose={() => setCertOpen(false)} />}
     </div>
   );
 };

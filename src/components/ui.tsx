@@ -250,7 +250,8 @@ export const Toast = ({ message, type = "success" }: { message: string; type?: T
     // 位置は上部固定ヘッダー(スタッフ画面のブース名など)と被らないよう、ボトムナビの上に表示する。
     <div className="fixed inset-x-0 z-[100] flex justify-center px-4 pointer-events-none print:hidden"
       style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}>
-      <div className="pointer-events-auto px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2 text-white font-bold text-sm max-w-[90vw]"
+      {/* トースト自体もタップを通す。数秒で消える通知が下のボタンを塞いではいけない */}
+      <div className="pointer-events-none px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 text-white font-bold text-sm max-w-[90vw]"
         style={{ backgroundColor: c.bg, animation: "slideUp 0.25s cubic-bezier(0.16,1,0.3,1)" }}
         role="status" aria-live="polite" aria-atomic="true">
         <Icon size={18} strokeWidth={2.5} /><span>{message}</span>

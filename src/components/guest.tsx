@@ -335,7 +335,7 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite,
             style={stamped
               ? { background: "linear-gradient(120deg,#ffd23f,#ff8a3d)", borderColor: "transparent", color: "#fff" }
               : { background: "var(--surface)", borderColor: `${THEME.purple}55`, color: "var(--ink)" }}>
-            {stamped ? "🎫 スタンプ済み（タップで取り消し）" : "🎫 ここに行った！スタンプを押す"}
+            <span className={stamped ? "anim-stamp-press" : ""}>{stamped ? "🎫 スタンプ済み（タップで取り消し）" : "🎫 ここに行った！スタンプを押す"}</span>
           </button>
         )}
 
