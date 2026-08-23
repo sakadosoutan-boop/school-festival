@@ -36,7 +36,7 @@ const MAP_MISC: MapMisc[] = [
 // アイコンと文字が重ならないよう、実マップに合わせて幅を広めに取る。
 const FROG_PLAZA = { x: 46, y: 46, w: 84, h: 11, bId: "outdoor", label: "かえる広場" };
 
-interface MapRoom { n: string; w: number; off?: boolean; vend?: boolean }
+interface MapRoom { n: string; w: number; off?: boolean; vend?: boolean; noEntry?: boolean; info?: boolean }
 interface MapBlock { id: string; label: string; lx: number; ly: number; x: number; y: number; w: number; floorH: number; entrance?: { x: number; y: number; w: number; h: number; label: string }; floors: Array<{ f: string; rooms: MapRoom[] }> }
 
 const MAP_BLOCKS: MapBlock[] = [
@@ -51,13 +51,13 @@ const MAP_BLOCKS: MapBlock[] = [
     entrance: { x: 22, y: 60, w: 8, h: 30, label: "昇降口" },
     floors: [
       { f: "3F", rooms: [{ n: "多目的室", w: 20.8 }, { n: "1-1", w: 20.06 }, { n: "1-2", w: 20.06 }, { n: "1-3", w: 20.06 }, { n: "1-4", w: 20.06 }, { n: "1-5", w: 20.06 }, { n: "1-6", w: 20.06 }, { n: "1-7", w: 20.04 }] },
-      { f: "2F", rooms: [{ n: "多目的室", w: 20.8 }, { n: "2-1", w: 20.06 }, { n: "2-2", w: 20.06 }, { n: "2-3", w: 20.06 }, { n: "2-4", w: 20.06 }, { n: "2-5", w: 20.06 }, { n: "2-6", w: 20.06 }, { n: "2-7", w: 20.04 }] },
+      { f: "2F", rooms: [{ n: "多目的室", w: 20.8 }, { n: "2-1", w: 18.34 }, { n: "案内所", w: 12, info: true }, { n: "2-2", w: 18.34 }, { n: "2-3", w: 18.34 }, { n: "2-4", w: 18.34 }, { n: "2-5", w: 18.34 }, { n: "2-6", w: 18.34 }, { n: "2-7", w: 18.36 }] },
       { f: "1F", rooms: [{ n: "3-1", w: 20.15 }, { n: "3-2", w: 20.15 }, { n: "3-3", w: 20.15 }, { n: "3-4", w: 20.15 }, { n: "3-5", w: 20.15 }, { n: "3-6", w: 20.15 }, { n: "3-7", w: 20.15 }, { n: "3-8", w: 20.15 }] },
     ] },
   { id: "admin", label: "管理棟", lx: 40, ly: 95, x: 40, y: 97, w: 130, floorH: 9,
     floors: [
-      { f: "2F", rooms: [{ n: "会議室", w: 26 }, { n: "放送室", w: 26 }, { n: "職員室", w: 78 }] },
-      { f: "1F", rooms: [{ n: "事務室", w: 26 }, { n: "校長室", w: 26 }, { n: "応接室", w: 26 }, { n: "保健室", w: 26 }, { n: "進路資料室", w: 26 }] },
+      { f: "2F", rooms: [{ n: "会議室", w: 26, noEntry: true }, { n: "放送室", w: 26, noEntry: true }, { n: "職員室", w: 78, noEntry: true }] },
+      { f: "1F", rooms: [{ n: "事務室", w: 26, noEntry: true }, { n: "校長室", w: 26, noEntry: true }, { n: "応接室", w: 26, noEntry: true }, { n: "保健室", w: 26, noEntry: true }, { n: "進路資料室", w: 26, noEntry: true }] },
     ] },
   // 増設棟は管理棟と繋がっているため、横に密着させて階数表示は出さない
   // (HR棟とは離す)。自販機は自習室の中にあるので、セル内アイコンで示す。
@@ -337,17 +337,39 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
     <>
       <header className="sticky top-0 z-30 overflow-hidden" style={{ background: "linear-gradient(120deg,#3ddc97 0%,#4cc9f0 55%,#9b5de5 100%)" }}>
         <div className="absolute inset-0 opacity-25 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle,#fff 1.5px,transparent 1.5px)", backgroundSize: "22px 22px" }} />
-        <div className="absolute top-4 right-10 text-base anim-twinkle pointer-events-none">⭐</div>
-        <div className="absolute bottom-3 right-20 text-sm anim-twinkle pointer-events-none" style={{ animationDelay: "1s" }}>✨</div>
-        <div className="relative max-w-xl mx-auto px-4 pt-4 pb-4">
-          <div className="text-[10px] font-extrabold text-white/90 tracking-[0.25em] uppercase flex items-center gap-1"><span>🗺️</span> MAP</div>
-          <h1 className="text-[26px] font-black text-white tracking-tight" style={{ letterSpacing: "-0.02em", textShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>会場マップ</h1>
-          <div className="text-xs text-white/90 font-bold mt-0.5">棟をタップすると企画一覧へジャンプ</div>
+        <div className="absolute top-2 right-8 text-sm anim-twinkle pointer-events-none">⭐</div>
+        {/* 地図に使える高さを増やすため、ヘッダーは1行に圧縮する */}
+        <div className="relative max-w-xl md:max-w-4xl mx-auto px-4 py-2.5 flex items-baseline gap-2">
+          <h1 className="text-lg font-black text-white tracking-tight" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>🗺️ 会場マップ</h1>
+          <span className="text-xs text-white/90 font-bold truncate">タップで企画へ</span>
         </div>
       </header>
 
       <main id="main-content" className="max-w-xl md:max-w-4xl mx-auto px-4 pt-4">
         <div ref={cardRef} className="rounded-3xl border-2 border-stone-200 bg-white p-3 mb-3 shadow-sm" style={{ scrollMarginTop: 80 }}>
+          {/* ツールバーは地図に重ねず上に置く(重ねると特別棟が隠れて読めなくなる) */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <button type="button" onClick={() => setHeatmapOn((v) => !v)} aria-pressed={heatmapOn}
+              className="flex items-center gap-1 h-8 px-3 rounded-full text-xs font-black border transition-colors active:scale-95"
+              style={heatmapOn ? { background: THEME.pink, color: "#fff", borderColor: THEME.pink } : { background: "var(--surface)", color: "var(--ink-soft)", borderColor: "var(--line)" }}>
+              <Thermometer size={13} strokeWidth={2.6} />混雑で色分け
+            </button>
+            <div className="flex items-center gap-0.5 rounded-full border p-0.5" style={{ background: "var(--surface)", borderColor: "var(--line)" }}>
+              <button type="button" onClick={zoomFit} aria-pressed={zoomStep === "fit"} aria-label="全体表示(校内全体を画面に収める)"
+                className="h-7 px-2.5 rounded-full flex items-center gap-1 text-xs font-black transition-colors active:scale-95"
+                style={zoomStep === "fit" ? { background: THEME.purple, color: "#fff" } : { color: "var(--ink-soft)" }}>
+                <Maximize2 size={12} strokeWidth={2.6} />全体
+              </button>
+              <button type="button" onClick={zoomOut} disabled={zoomStep === "fit" && pinchWidth == null} aria-label="縮小"
+                className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-90 transition-transform" style={{ color: "var(--ink-soft)" }}>
+                <ZoomOut size={15} strokeWidth={2.4} />
+              </button>
+              <button type="button" onClick={zoomIn} disabled={zoomStep === 2 && pinchWidth == null} aria-label="拡大"
+                className="w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-90 transition-transform" style={{ color: "var(--ink-soft)" }}>
+                <ZoomIn size={15} strokeWidth={2.4} />
+              </button>
+            </div>
+          </div>
           {/* 地図の表示エリア(このrelativeの中だけにツールバー/FABを重ねる。凡例はこの外に出して、FABと絶対に重ならないようにする) */}
           <div className="relative">
             {/* pan-x pan-y = 指1本のスクロールは通常どおり、ピンチだけ自前で処理する */}
@@ -360,6 +382,12 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
                   .map-focus-pulse { animation: mapFocusPulse 1s ease-in-out infinite; }
                   @media (prefers-reduced-motion: reduce) { .map-focus-pulse { animation: none; } }
                 `}</style>
+                <defs>
+                  {/* 立入禁止エリアの斜線(管理棟は文化祭期間中ずっと封鎖される) */}
+                  <pattern id="noEntryHatch" width="3" height="3" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <line x1="0" y1="0" x2="0" y2="3" stroke="#a8a29e" strokeWidth="0.9" opacity="0.55" />
+                  </pattern>
+                </defs>
                 <rect x="0" y="0" width={MAP_W} height={MAP_H} rx="2.5" fill="#f6f8f4" />
 
                 {MAP_MISC.map((m) => {
@@ -483,24 +511,31 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
                             const isFood = matched.some((mm) => mm.category === "food");
                             const sold = has && matched.every((mm) => allSoldOut(mm));
                             const heat = heatmapOn ? heatStyleForGroup(matched) : null;
-                            const cellFill = heat ? heat.fill : (rm.off ? "#eceae6" : has ? "#fff3e0" : rm.n ? "#ffffff" : "#fbfaf8");
-                            const cellStroke = heat ? heat.stroke : (has ? "#ff9e3d" : "#ddd9d2");
-                            const textFill = heat ? heat.text : (has ? "#5b3a1e" : "#8a857c");
+                            // 立入禁止(管理棟)と案内所は企画セルと取り違えないよう専用の配色にする
+                            const cellFill = rm.noEntry ? "#e3e0dc" : rm.info ? "#dbeafe" : heat ? heat.fill : (rm.off ? "#eceae6" : has ? "#fff3e0" : rm.n ? "#ffffff" : "#fbfaf8");
+                            const cellStroke = rm.noEntry ? "#b6afa6" : rm.info ? "#2563eb" : heat ? heat.stroke : (has ? "#ff9e3d" : "#ddd9d2");
+                            const textFill = rm.noEntry ? "#8a8378" : rm.info ? "#1e40af" : heat ? heat.text : (has ? "#5b3a1e" : "#8a857c");
                             const statusFill = heat ? heat.text : (sold ? "#dc2626" : "#e6206b");
                             const statusLabel = has && bt ? (sold ? "完売" : bt.isOpen ? `待ち${bt.waitMinutes}分` : "準備中") : "";
                             return (
                               <g key={ri} style={{ cursor: has ? "pointer" : "default" }}
                                 {...(has && bt ? focusableProps(cell.key, `${rm.n}。${bt.name}。${statusLabel}`, () => onJump(bt.id)) : {})}>
-                                {rm.n ? <title>{rm.vend ? `${rm.n}(室内に自販機あり)` : rm.n}</title> : null}
+                                {rm.n ? <title>{rm.noEntry ? `${rm.n}(立入禁止)` : rm.info ? "インフォメーションセンター(2-1と2-2の間)" : rm.vend ? `${rm.n}(室内に自販機あり)` : rm.n}</title> : null}
                                 {/* タップ判定は見た目の枠より少し広く取り、指での操作を押しやすくする */}
                                 {has && <rect x={rx - 0.7} y={fy - 0.7} width={rm.w + 1.4} height={blk.floorH + 1.4} rx="1.5" fill={heat ? heat.stroke : "#ffb157"} opacity="0.22" />}
                                 <rect x={rx} y={fy} width={rm.w} height={blk.floorH} rx="0.8"
-                                  fill={cellFill} stroke={cellStroke} strokeWidth={has ? 0.8 : 0.35} />
+                                  fill={cellFill} stroke={cellStroke} strokeWidth={rm.info ? 0.9 : has ? 0.8 : 0.35} />
+                                {rm.noEntry && (
+                                  <rect x={rx} y={fy} width={rm.w} height={blk.floorH} rx="0.8" fill="url(#noEntryHatch)" pointerEvents="none" />
+                                )}
+                                {rm.info && (
+                                  <text x={rx + rm.w / 2} y={fy + 3.4} textAnchor="middle" fontSize="3">ℹ️</text>
+                                )}
                                 {rm.off && (
                                   <text x={rx + rm.w / 2} y={fy + blk.floorH / 2 + 1} textAnchor="middle" fontSize="3" fontWeight="700" fill="#b0aaa0">{rm.n}</text>
                                 )}
                                 {rm.n && !rm.off && (
-                                  <text x={rx + rm.w / 2} y={has ? fy + blk.floorH / 2 - 0.7 : fy + blk.floorH / 2 + 1.1}
+                                  <text x={rx + rm.w / 2} y={rm.info ? fy + blk.floorH - 2 : has ? fy + blk.floorH / 2 - 0.7 : fy + blk.floorH / 2 + 1.1}
                                     textAnchor="middle" fontSize={rm.n.length >= 6 ? 2.4 : rm.n.length >= 4 ? 2.9 : 3.4} fontWeight="800"
                                     fill={textFill}>{rm.n}</text>
                                 )}
@@ -539,29 +574,6 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
               </svg>
             </div>
 
-            <button type="button" onClick={() => setHeatmapOn((v) => !v)} aria-pressed={heatmapOn}
-              className="absolute top-2 left-2 z-10 flex items-center gap-1 h-7 px-2.5 rounded-full text-[10px] font-black shadow-sm border transition-colors active:scale-95"
-              style={heatmapOn ? { background: THEME.pink, color: "#fff", borderColor: THEME.pink } : { background: "rgba(255,255,255,0.95)", color: "#57534e", borderColor: "#e7e5e4" }}>
-              <Thermometer size={12} strokeWidth={2.6} />混雑で色分け
-            </button>
-
-            <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 bg-white/95 backdrop-blur rounded-full shadow-sm border border-stone-200 p-1">
-              <button type="button" onClick={zoomFit} aria-pressed={zoomStep === "fit"} aria-label="全体表示(校内全体を画面に収める)"
-                className="h-7 px-2 rounded-full flex items-center gap-1 text-[10px] font-black transition-colors active:scale-95"
-                style={zoomStep === "fit" ? { background: THEME.purple, color: "#fff" } : { color: "#57534e" }}>
-                <Maximize2 size={11} strokeWidth={2.6} />全体表示
-              </button>
-              <span className="w-px h-4 bg-stone-200" aria-hidden="true" />
-              <button type="button" onClick={zoomOut} disabled={zoomStep === "fit"} aria-label="縮小"
-                className="w-7 h-7 rounded-full flex items-center justify-center text-stone-600 disabled:opacity-30 active:scale-90 transition-transform">
-                <ZoomOut size={14} strokeWidth={2.4} />
-              </button>
-              <button type="button" onClick={zoomIn} disabled={zoomStep === 2} aria-label="拡大"
-                className="w-7 h-7 rounded-full flex items-center justify-center text-stone-600 disabled:opacity-30 active:scale-90 transition-transform">
-                <ZoomIn size={14} strokeWidth={2.4} />
-              </button>
-            </div>
-
             <button onClick={() => scrollTo(BUILDINGS.find((b) => (grouped[b.id] || []).length > 0)?.id)}
               className="absolute bottom-3 right-3 z-10 px-3.5 py-2 rounded-full flex items-center gap-1.5 text-white text-xs font-black shadow-lg active:scale-95 transition-transform"
               style={{ background: "#1d3461" }}>
@@ -572,6 +584,8 @@ export const MapView = ({ booths, onJump, onOpenStage, focusBoothId }: { booths:
           {/* 凡例はマップ枠の外(通常フロー)に置く。FABは上のrelative枠の中だけに重なるので、ここは絶対に隠れない */}
           <div className="flex items-center justify-center gap-x-3 gap-y-1.5 mt-2.5 text-[10px] text-stone-500 font-bold flex-wrap px-1">
             <span className="flex items-center gap-1">🍴 食品販売</span>
+            <span className="flex items-center gap-1">ℹ️ 案内所</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded border" style={{ borderColor: "#b6afa6", background: "repeating-linear-gradient(45deg,#e3e0dc,#e3e0dc 2px,#b6afa6 2px,#b6afa6 3px)" }} /> 立入禁止</span>
             <span className="flex items-center gap-1">☂️ アンブレラスカイ</span>
             <span className="flex items-center gap-1">🥤 自販機</span>
             <span className="flex items-center gap-1">🗑️ ゴミ箱</span>

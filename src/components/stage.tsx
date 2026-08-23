@@ -723,10 +723,10 @@ const RockinGrid = ({ items, refMin, onTap, venue, density }: { items: StageItem
 const StageHeader = ({ program }: { program: StageProgram | null }) => (
   <header className="sticky top-0 z-30 overflow-hidden" style={{ background: "linear-gradient(120deg,#9b5de5 0%,#4cc9f0 60%,#3ddc97 100%)" }}>
     <div className="absolute inset-0 opacity-25 pointer-events-none" style={{ backgroundImage: "radial-gradient(circle,#fff 1.5px,transparent 1.5px)", backgroundSize: "22px 22px" }} />
-    <div className="relative max-w-xl mx-auto px-4 pt-4 pb-4">
-      <div className="text-[10px] font-extrabold text-white/90 tracking-[0.25em] uppercase flex items-center gap-1"><span>🎤</span> STAGE</div>
-      <h1 className="text-[26px] font-black text-white tracking-tight" style={{ letterSpacing: "-0.02em", textShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>ステージ進行</h1>
-      <div className="text-xs text-white/90 font-bold mt-0.5">{program?.stageName || "メインステージ"}</div>
+    {/* タイムテーブルに使える高さを増やすため、ヘッダーは1行に圧縮する */}
+    <div className="relative max-w-2xl mx-auto px-4 py-2.5 flex items-baseline gap-2">
+      <h1 className="text-lg font-black text-white tracking-tight" style={{ textShadow: "0 2px 8px rgba(0,0,0,0.15)" }}>🎤 ステージ進行</h1>
+      <span className="text-xs text-white/90 font-bold truncate">{program?.stageName || "メインステージ"}</span>
     </div>
   </header>
 );

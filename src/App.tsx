@@ -10,7 +10,7 @@ import {
   saveStage as apiSaveStage, updateSettings, verifyPin,
 } from "./lib/api";
 import { normalizeForSearch } from "./lib/text";
-import { buildCourses, closingNotice, isDensity, isKidsFriendly } from "./lib/guest-helpers";
+import { boothSearchText, buildCourses, closingNotice, isDensity, isKidsFriendly } from "./lib/guest-helpers";
 import type { Density } from "./lib/guest-helpers";
 import type { Booth, FestivalNotice, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
 import { EmptyState, SkipLink, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll, useTextScale, useTheme } from "./components/ui";
@@ -18,6 +18,7 @@ import type { ToastType } from "./components/ui";
 import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
 import { CourseSuggestions } from "./components/courses";
 import { StampRallyCard, useStampRally } from "./components/rally";
+import { Confetti, rallyRank } from "./components/celebrate";
 import { InstallAppCard, InstallInstructionsSheet } from "./components/install";
 import { CalculatorSheet, EditBoothSheet, SettingsSheet, SnapshotSheet, StaffBoothPanel, StaffBoothSelector, StaffLogin } from "./components/staff";
 import { StageEditor, StageView } from "./components/stage";
@@ -97,6 +98,7 @@ function AppInner(): React.JSX.Element {
   // スクロール中はヘッダーの統計カードを畳んで、一覧を早く見せる
   const [headerCompact, setHeaderCompact] = useState(false);
   const { visited: rallyVisited, record: recordRallyVisit, remove: removeRallyVisit, reset: resetRally } = useStampRally();
+  const [confetti, setConfetti] = useState(false);
 
   const [staffPin, setStaffPin] = useState(() => sessionStorage.getItem(SESSION_PIN_KEY) ?? "");
   const [staffRole, setStaffRole] = useState<StaffRole | null>(() => {
@@ -331,7 +333,7 @@ function AppInner(): React.JSX.Element {
     if (view !== "home") { setHeaderCompact(false); return; }
     const onScroll = () => {
       const y = window.scrollY;
-      setHeaderCompact((prev) => (prev ? y > 60 : y > 140));
+      setHeaderCompact((prev) => (prev ? y > 24 : y > 80));
     };
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
@@ -602,8 +604,8 @@ function AppInner(): React.JSX.Element {
     else if (quickFilter === "kids") list = list.filter(isKidsFriendly);
     const normalized = normalizeForSearch(query);
     if (normalized) {
-      list = list.filter((b) => [b.name, b.orgName, b.organizer, b.room, b.description, `${b.grade}年${b.classNum}組`]
-        .some((value) => normalizeForSearch(String(value ?? "")).includes(normalized)));
+      // カテゴリの言い換え(「食べ物」→フード等)や商品名でも引けるようにする
+      list = list.filter((b) => normalizeForSearch(boothSearchText(b)).includes(normalized));
     }
     if (sortBy === "wait_asc") list = [...list].sort((a, b) => (!a.isOpen && b.isOpen ? 1 : a.isOpen && !b.isOpen ? -1 : a.waitMinutes - b.waitMinutes));
     else if (sortBy === "wait_desc") list = [...list].sort((a, b) => b.waitMinutes - a.waitMinutes);
@@ -650,10 +652,19 @@ function AppInner(): React.JSX.Element {
   return (
     <div className="min-h-screen pb-24" style={{ background: "linear-gradient(180deg,#fff7ed 0%,#fef0f5 100%)", fontFamily: '"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }}>
       <SkipLink />
+      {confetti && <Confetti onDone={() => setConfetti(false)} />}
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Sheets */}
-      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} stamped={rallyVisited.includes(selectedBooth.id)} onToggleStamp={(id) => { if (rallyVisited.includes(id)) { removeRallyVisit(id); } else { recordRallyVisit(id); showToast("スタンプを押しました！", "success"); } }} />}
+      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} stamped={rallyVisited.includes(selectedBooth.id)} onToggleStamp={(id) => {
+        if (rallyVisited.includes(id)) { removeRallyVisit(id); return; }
+        recordRallyVisit(id);
+        setConfetti(true);
+        // 称号が上がった瞬間だけ、通常のトーストより強い言葉で伝える
+        const before = rallyRank(rallyVisited.length, booths.length);
+        const after = rallyRank(rallyVisited.length + 1, booths.length);
+        showToast(after.level > before.level ? `${after.emoji} 「${after.title}」になりました！` : "スタンプを押しました！", "success");
+      }} />}
       {calcOpen && staffBooth && <CalculatorSheet booth={staffBooth} onClose={() => setCalcOpen(false)} onApply={(u) => { updateBooth(staffBooth.id, u); setCalcOpen(false); showToast(`待ち時間を ${u.waitMinutes}分 に更新しました`); }} />}
       {(editingId || creating) && <EditBoothSheet booth={creating ? null : booths.find((b) => b.id === editingId) ?? null} isNew={creating} onClose={() => { setEditingId(null); setCreating(false); }} onSave={handleSaveBooth} onDelete={() => { if (editingId) void handleDeleteBooth(editingId); }} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
@@ -875,44 +886,42 @@ function AppInner(): React.JSX.Element {
               </button>
             )}
 
-            {booths.length > 0 && <StampRallyCard count={rallyCount} total={booths.length} onReset={resetRally} />}
-
-            <CourseSuggestions courses={courses} onSelect={(id) => setSelectedId(id)} />
-
-            <div className="mb-3">
+            {/* 検索と絞り込みを最優先に置き、企画一覧が1画面目に入るようにする */}
+            <div className="mb-2">
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="🔍 ブース名・クラス・教室で検索"
-                className="w-full px-4 py-3 rounded-2xl border-2 bg-white text-sm font-bold outline-none"
+                className="w-full px-4 py-2.5 rounded-2xl border-2 bg-white text-sm font-bold outline-none"
                 style={{ borderColor: `${THEME.purple}33`, color: "var(--ink)" }}
               />
             </div>
 
-            {/* 絞り込みは折り返さず1行に収め、企画一覧が下へ押し出されないようにする */}
-            <div className="flex gap-1.5 mb-2 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 pb-0.5">
+            {/* 絞り込みは棟も含めて1行にまとめる(折り返すと一覧が下へ押し出されるため) */}
+            <div {...buildingPan} className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 pb-0.5 cursor-grab active:cursor-grabbing select-none">
               <FilterChip active={quickFilter === "open"} activeColor="#10b981" onClick={() => setQuickFilter((f) => f === "open" ? "none" : "open")}>
-                🟢 営業中のみ
+                🟢 営業中
               </FilterChip>
               <FilterChip active={quickFilter === "quick"} activeColor={THEME.orange} onClick={() => setQuickFilter((f) => f === "quick" ? "none" : "quick")}>
-                ⚡ すぐ入れる(5分以内)
+                ⚡ すぐ入れる
               </FilterChip>
               <FilterChip active={quickFilter === "kids"} activeColor="#0e7490" onClick={() => setQuickFilter((f) => f === "kids" ? "none" : "kids")}>
-                👶 お子さま向け
+                👶 お子さま
               </FilterChip>
+              {buildingChips.length > 1 && (
+                <>
+                  <span className="flex-shrink-0 w-px h-5 bg-stone-200" aria-hidden="true" />
+                  <span className="flex-shrink-0 text-xs font-black text-stone-400">📍</span>
+                  {buildingChips.map((b) => (
+                    <FilterChip key={b.id} active={building === b.id} activeColor={THEME.purple} onClick={() => setBuilding(building === b.id ? "all" : b.id)}>
+                      {b.label}
+                    </FilterChip>
+                  ))}
+                </>
+              )}
             </div>
 
-            {buildingChips.length > 1 && (
-              <div {...buildingPan} className="flex items-center gap-1.5 mb-2 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 cursor-grab active:cursor-grabbing select-none">
-                <span className="flex-shrink-0 text-[11px] font-black text-stone-500">📍今いる棟</span>
-                <FilterChip active={building === "all"} activeColor={THEME.purple} onClick={() => setBuilding("all")}>すべて</FilterChip>
-                {buildingChips.map((b) => (
-                  <FilterChip key={b.id} active={building === b.id} activeColor={THEME.purple} onClick={() => setBuilding(building === b.id ? "all" : b.id)}>
-                    {b.label}
-                  </FilterChip>
-                ))}
-              </div>
-            )}
+            {/* スタンプラリーとおすすめコースは一覧の下(すぐ使う情報を上に出すため) */}
 
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <div className="text-xs font-bold" style={{ color: "var(--ink)" }}>{filtered.length}件のブース</div>
@@ -964,6 +973,11 @@ function AppInner(): React.JSX.Element {
                   : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます"
                   : "検索語やカテゴリを変えてお試しください"} />
             )}
+            <div className="mt-5">
+              {booths.length > 0 && <StampRallyCard count={rallyCount} total={booths.length} onReset={resetRally} />}
+              <CourseSuggestions courses={courses} onSelect={(id) => setSelectedId(id)} />
+            </div>
+
             <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · 最終同期 {syncLabel} · {STALE_MINUTES}分以上更新がないと「情報が古い」と表示されます</div>
           </main>
         </>

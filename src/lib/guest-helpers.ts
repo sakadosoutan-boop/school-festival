@@ -168,3 +168,28 @@ export function buildCourses(booths: Booth[], perCourse = 5): Course[] {
 
   return courses.slice(0, 3);
 }
+
+/* ═══════════ 検索の言い換え ═══════════
+   来場者は団体名を知らないまま「食べ物」「ゲーム」など一般語で探すため、
+   カテゴリ名とその言い換えも検索対象に含める。 */
+const CATEGORY_ALIASES: Record<string, string[]> = {
+  food: ["フード", "食べ物", "たべもの", "food", "飲食", "軽食", "food"],
+  attraction: ["アトラクション", "乗り物", "体験型"],
+  game: ["ゲーム", "遊び", "あそび", "game"],
+  experience: ["体験", "たいけん", "ワークショップ", "手作り"],
+  stage: ["ステージ", "発表", "公演", "ライブ"],
+  exhibition: ["展示", "てんじ", "作品"],
+  other: ["その他", "そのほか"],
+};
+
+/** ブースを検索するときの対象文字列(名前・団体・場所に加え、カテゴリの言い換えも含む) */
+export function boothSearchText(booth: Booth): string {
+  const parts: unknown[] = [
+    booth.name, booth.orgName, booth.organizer, booth.room, booth.description,
+    `${booth.grade}年${booth.classNum}組`,
+    ...(CATEGORY_ALIASES[booth.category] ?? []),
+  ];
+  if (isKidsFriendly(booth)) parts.push("お子さま", "子ども", "こども");
+  (booth.products ?? []).forEach((p) => { parts.push(p.name); (p.allergens ?? []).forEach((a) => parts.push(a)); });
+  return parts.filter(Boolean).join(" ");
+}

@@ -497,15 +497,7 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
             <span className="font-black text-base">🟢 開店する（営業中にする）</span>
             <span className="block text-xs font-bold text-white/90 mt-0.5">お客さんの画面に待ち時間が表示されるようになります</span>
           </button>
-        ) : (
-          // 閉店も同じ位置・同じ大きさで押せるようにする(右上のピルだけでは気づきにくい)
-          <button onClick={() => setConfirmClose(true)}
-            className="w-full mb-4 py-3.5 rounded-2xl border-2 bg-white active:scale-[0.98] transition-transform"
-            style={{ borderColor: "#e7e5e4" }}>
-            <span className="font-black text-base text-stone-700">🔴 閉店する（準備中にもどす）</span>
-            <span className="block text-xs font-bold text-stone-400 mt-0.5">休憩・完売・終了のときに押してください</span>
-          </button>
-        )}
+        ) : null}
 
         <div className="rounded-3xl p-6 mb-4 relative overflow-hidden" style={{ backgroundColor: status.soft, border: `1px solid ${status.ring}` }}>
           <div className="flex items-center justify-between mb-2">
@@ -663,6 +655,16 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
             </div>
           </div>
         </div>
+
+        {booth.isOpen && (
+          // 閉店は当日ほとんど押さない操作なので、誤タップを避けて画面のいちばん下に置く
+          <button onClick={() => setConfirmClose(true)}
+            className="w-full mt-4 py-3.5 rounded-2xl border-2 bg-white active:scale-[0.98] transition-transform"
+            style={{ borderColor: "#e7e5e4" }}>
+            <span className="font-black text-base text-stone-700">🔴 閉店する（準備中にもどす）</span>
+            <span className="block text-xs font-bold text-stone-400 mt-0.5">休憩・完売・終了のときに押してください</span>
+          </button>
+        )}
       </div>
 
       {confirmClose && (
