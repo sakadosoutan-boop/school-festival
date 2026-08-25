@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, Clock, Coffee, MapPin, Plus, RefreshCw, Settings, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
   EMOJI_PALETTE, itemStatus, MAIN_STAGE, makeStageItem, makeStagePerformer, MAX_PERFORMERS, minToHHMM, nowMin,
-  PERFORMER_DESC_MAX, PERFORMER_EMOJI_PALETTE, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, PERFORMER_ROLE_PRESETS,
-  seedStage, sortItems, STAGE_VENUES, stageNowNext, THEME, toMin, todayFestivalDay,
+  PERFORMER_DESC_MAX, PERFORMER_EMOJI_PALETTE, PERFORMER_ICON_PX, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, PERFORMER_ROLE_PRESETS,
+  seedStage, sortItems, STAGE_VENUES, stageNowNext, THEME, toMin, todayFestivalDay, venueEmoji,
 } from "../lib/festival";
 import type { StageItem, StagePerformer, StageProgram } from "../types";
 import { Confirm, EmptyState, Field, fileToIconDataUrl, Hint, IconButton, Sheet, TimeStepper } from "./ui";
@@ -52,11 +52,20 @@ const performerGroups = (list: StagePerformer[]): { role: string; members: Stage
   return order.map((role) => ({ role, members: byRole.get(role)! }));
 };
 
+/** 出演者のアイコン。画像があれば画像、なければ絵文字 */
+export const PerformerIcon = ({ performer, size = 40, rounded = 12, emojiClass = "text-xl" }: {
+  performer: StagePerformer; size?: number; rounded?: number; emojiClass?: string;
+}) => (
+  performer.iconImage
+    ? <img src={performer.iconImage} alt="" loading="lazy" style={{ width: size, height: size, borderRadius: rounded, objectFit: "cover" }} className="flex-shrink-0" />
+    : <span className={emojiClass} style={{ lineHeight: 1 }}>{performer.emoji || "🎤"}</span>
+);
+
 const PerformerCard = ({ performer }: { performer: StagePerformer }) => (
   <div className="p-3.5 rounded-2xl border" style={{ background: "var(--surface)", borderColor: `${THEME.purple}26` }}>
     <div className="flex items-center gap-2.5 mb-1.5">
-      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ background: "#f3ecff" }}>
-        {performer.emoji || "🎤"}
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: "#f3ecff" }}>
+        <PerformerIcon performer={performer} size={44} rounded={12} emojiClass="text-2xl" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="font-black text-[15px] truncate" style={{ color: "var(--ink)" }}>{performer.name || "(名前未設定)"}</div>
@@ -241,7 +250,7 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
         <button key={v} type="button" onClick={() => setVenue(v)} aria-pressed={activeVenue === v}
           className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-purple-400 ${activeVenue === v ? "text-white shadow-sm border-transparent" : "bg-white text-stone-600 border-stone-200"}`}
           style={activeVenue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
-          {v === MAIN_STAGE ? "🎤 " : "🎪 "}{v}
+          {venueEmoji(v)}{" "}{v}
         </button>
       ))}
     </div>
@@ -452,7 +461,7 @@ const StageEmptyBlock = ({ venue, day, dayCount, otherDays, otherVenues, onJumpD
             <button key={`v${v}`} type="button" onClick={() => onJumpVenue(v)}
               className="text-xs font-bold px-3 py-1.5 rounded-full text-white active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-purple-400"
               style={{ background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" }}>
-              {v === MAIN_STAGE ? "🎤 " : "🎪 "}{v}
+              {venueEmoji(v)}{" "}{v}
             </button>
           ))}
         </div>
@@ -859,7 +868,11 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
     <div className="pb-28">
       <div className="sticky top-0 z-10 bg-stone-50/90 backdrop-blur-xl border-b border-stone-200 px-4 py-3 flex items-center gap-2">
         <IconButton icon={ChevronLeft} onClick={onBack} label="戻る" variant="ghost" />
-        <div className="flex-1 min-w-0"><div className="text-xs text-stone-500">ステージ管理</div><div className="font-bold text-stone-900 truncate">{draft.stageName}</div></div>
+        {/* 見出しは「いま選んでいる会場」。体育館以外もここで管理するので、固定名は出さない */}
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-stone-500">ステージ管理{dayCount > 1 ? ` ・ ${day}日目` : ""}</div>
+          <div className="font-bold text-stone-900 truncate">{venueEmoji(venue)} {venue}</div>
+        </div>
       </div>
 
       <div className="px-4 pt-5">
@@ -887,27 +900,10 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
               <button key={v} type="button" onClick={() => setVenue(v)} aria-pressed={venue === v}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border ${venue === v ? "text-white border-transparent shadow-sm" : "bg-white text-stone-600 border-stone-200"}`}
                 style={venue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
-                {v === MAIN_STAGE ? "🎤 " : "🎪 "}{v}{count > 0 ? ` ${count}件` : ""}
+                {venueEmoji(v)}{" "}{v}{count > 0 ? ` ${count}件` : ""}
               </button>
             );
           })}
-        </div>
-
-        <div className="rounded-2xl p-4 mb-4 border" style={{ background: "#fff7ed", borderColor: "#ff8a3d44" }}>
-          <div className="flex items-center gap-2 mb-2.5"><Clock size={16} style={{ color: THEME.orange }} strokeWidth={2.4} /><div className="font-bold text-sm" style={{ color: THEME.ink }}>進行が押している/巻いているとき</div></div>
-          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-            <span className="text-[10px] font-bold text-stone-400">対象</span>
-            <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-white" style={{ background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" }}>
-              {venue === MAIN_STAGE ? "🎤 " : "🎪 "}{shiftTargetLabel}
-            </span>
-          </div>
-          <p className="text-xs text-stone-500 mb-3 leading-relaxed">これから始まる公演の時刻をまとめてずらせます（終了済みは動きません）。</p>
-          <div className="grid grid-cols-4 gap-2">
-            <button onClick={() => shiftAll(-5)} aria-label={`${shiftTargetLabel}の公演を5分前にずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">−5分</button>
-            <button onClick={() => shiftAll(5)} aria-label={`${shiftTargetLabel}の公演を5分後ろにずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">+5分</button>
-            <button onClick={() => shiftAll(10)} aria-label={`${shiftTargetLabel}の公演を10分後ろにずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">+10分</button>
-            <button onClick={() => shiftAll(15)} aria-label={`${shiftTargetLabel}の公演を15分後ろにずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">+15分</button>
-          </div>
         </div>
 
         <button onClick={() => setCreating(true)}
@@ -961,6 +957,26 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
             </div>
           )}
         </div>
+
+        {/* 一括のずらしは、進行が乱れたときに役員だけが使う操作。
+            普段の登録作業で誤って押さないよう、いちばん下に置く。 */}
+        <div className="mt-8 rounded-2xl p-4 border" style={{ background: "#fff7ed", borderColor: "#ff8a3d44" }}>
+          <div className="flex items-center gap-2 mb-1"><Clock size={16} style={{ color: THEME.orange }} strokeWidth={2.4} /><div className="font-bold text-sm" style={{ color: THEME.ink }}>進行が押している/巻いているとき</div></div>
+          <p className="text-[11px] font-bold mb-2.5" style={{ color: THEME.orange }}>実行委員（役員）専用 ・ 会場全体の時刻が動きます</p>
+          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+            <span className="text-[10px] font-bold text-stone-400">対象</span>
+            <span className="text-[11px] font-black px-2 py-0.5 rounded-full text-white" style={{ background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" }}>
+              {venueEmoji(venue)}{" "}{shiftTargetLabel}
+            </span>
+          </div>
+          <p className="text-xs text-stone-500 mb-3 leading-relaxed">これから始まる公演の時刻をまとめてずらせます（終了済みは動きません）。あとの団体と放送部に連絡してから押してください。</p>
+          <div className="grid grid-cols-4 gap-2">
+            <button onClick={() => shiftAll(-5)} aria-label={`${shiftTargetLabel}の公演を5分前にずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">−5分</button>
+            <button onClick={() => shiftAll(5)} aria-label={`${shiftTargetLabel}の公演を5分後ろにずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">+5分</button>
+            <button onClick={() => shiftAll(10)} aria-label={`${shiftTargetLabel}の公演を10分後ろにずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">+10分</button>
+            <button onClick={() => shiftAll(15)} aria-label={`${shiftTargetLabel}の公演を15分後ろにずらす`} className="py-2.5 rounded-xl bg-white border border-stone-200 font-bold text-sm active:scale-95">+15分</button>
+          </div>
+        </div>
       </div>
 
       {(editItem || creating) && (
@@ -979,27 +995,58 @@ const StagePerformerEditor = ({ performer, isNew, onClose, onSave, onDelete }: {
 }) => {
   const [form, setForm] = useState<StagePerformer>(performer);
   const [confirmDel, setConfirmDel] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const set = <K extends keyof StagePerformer>(k: K, v: StagePerformer[K]) => setForm((p) => ({ ...p, [k]: v }));
   const valid = Boolean(form.name.trim());
+
+  const handleImageFile = (file: File | undefined) => {
+    setUploadError("");
+    if (!file) return;
+    // 出演者の写真は小さくしか出ないので128pxに抑える(ステージ全体の容量対策)
+    fileToIconDataUrl(file, PERFORMER_ICON_PX)
+      .then((dataUrl) => set("iconImage", dataUrl))
+      .catch((e: Error) => setUploadError(e.message));
+  };
 
   return (
     <Sheet onClose={onClose} title={isNew ? "出演者を追加" : "出演者の編集"}>
       <div className="px-5 pb-4 space-y-4 pt-1">
         <Field label="アイコン">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-4xl flex-shrink-0 border-2"
-              style={{ background: "#f3ecff", borderColor: `${THEME.purple}44` }}>{form.emoji || "🎤"}</div>
-            <Hint>下から1つ選んでください</Hint>
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-4xl flex-shrink-0 border-2 overflow-hidden"
+              style={{ background: "#f3ecff", borderColor: `${THEME.purple}44` }}>
+              {form.iconImage
+                ? <img src={form.iconImage} alt="" style={{ width: 64, height: 64, objectFit: "cover" }} />
+                : <span>{form.emoji || "🎤"}</span>}
+            </div>
+            <div className="flex-1">
+              <button type="button" onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2.5 rounded-xl border border-stone-200 bg-white text-xs font-bold text-stone-700 active:scale-95 flex items-center justify-center gap-1">
+                <Upload size={13} strokeWidth={2.4} /> 写真・イラストを使う
+              </button>
+              <Hint>自動で正方形に調整されます</Hint>
+            </div>
           </div>
-          <div className="p-3 bg-white rounded-2xl border border-stone-200 grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
-            {PERFORMER_EMOJI_PALETTE.map((e, i) => (
-              <button key={`${e}-${i}`} type="button" onClick={() => set("emoji", e)}
-                aria-label={`アイコンを${e}にする`} aria-pressed={form.emoji === e}
-                className={`aspect-square rounded-lg text-2xl flex items-center justify-center active:scale-90 transition-transform ${form.emoji === e ? "" : "hover:bg-stone-100"}`}
-                style={form.emoji === e ? { background: "#f3ecff", boxShadow: "inset 0 0 0 2px #9b5de5" } : {}}
-              >{e}</button>
-            ))}
-          </div>
+          <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+            onChange={(e) => { handleImageFile(e.target.files?.[0]); e.target.value = ""; }} />
+          {uploadError && <div className="text-xs text-red-600 font-semibold mb-2 flex items-center gap-1"><AlertTriangle size={12} /> {uploadError}</div>}
+          {form.iconImage ? (
+            <button type="button" onClick={() => set("iconImage", "")}
+              className="w-full py-2 rounded-xl bg-stone-100 text-xs font-bold text-stone-600 active:scale-95 flex items-center justify-center gap-1">
+              <X size={12} strokeWidth={2.5} /> 画像を外して絵文字に戻す
+            </button>
+          ) : (
+            <div className="p-3 bg-white rounded-2xl border border-stone-200 grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
+              {PERFORMER_EMOJI_PALETTE.map((e, i) => (
+                <button key={`${e}-${i}`} type="button" onClick={() => set("emoji", e)}
+                  aria-label={`アイコンを${e}にする`} aria-pressed={form.emoji === e}
+                  className={`aspect-square rounded-lg text-2xl flex items-center justify-center active:scale-90 transition-transform ${form.emoji === e ? "" : "hover:bg-stone-100"}`}
+                  style={form.emoji === e ? { background: "#f3ecff", boxShadow: "inset 0 0 0 2px #9b5de5" } : {}}
+                >{e}</button>
+              ))}
+            </div>
+          )}
         </Field>
 
         <Field label="名前・ニックネーム" required>
@@ -1172,7 +1219,9 @@ const StageItemEditor = ({ item, isNew, venues, onClose, onSave, onDelete }: { i
           <div className="space-y-2 mb-2">
             {performers.map((p, i) => (
               <div key={p.id} className="flex items-center gap-2 p-2.5 bg-white rounded-2xl border border-stone-200">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ background: "#f3ecff" }}>{p.emoji || "🎤"}</div>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden" style={{ background: "#f3ecff" }}>
+                  <PerformerIcon performer={p} size={36} rounded={12} emojiClass="text-lg" />
+                </div>
                 <button type="button" onClick={() => setEditingPerformer(p)} className="flex-1 min-w-0 text-left active:scale-[0.99] transition-transform">
                   <div className="font-bold text-sm truncate text-stone-900">{p.name || "(名前未設定)"}</div>
                   <div className="text-[11px] truncate text-stone-500">
