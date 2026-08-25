@@ -47,9 +47,10 @@ const CourseRow = ({ course, onSelect }: { course: Course; onSelect: (id: string
   );
 };
 
-export const CourseSuggestions = ({ courses, onSelect }: { courses: Course[]; onSelect: (id: string) => void }) => {
-  // 企画一覧が画面下へ押し出されないよう、既定は畳んでおく(見出しだけ残す)
-  const [open, setOpen] = useState(false);
+export const CourseSuggestions = ({ courses, onSelect, defaultOpen = false }: { courses: Course[]; onSelect: (id: string) => void; defaultOpen?: boolean }) => {
+  // 企画一覧が画面下へ押し出されないよう、既定は畳んでおく(見出しだけ残す)。
+  // シートの中など、それ自体を見に来た場所では開いた状態で出す。
+  const [open, setOpen] = useState(defaultOpen);
   if (courses.length === 0) return null;
   return (
     <section className="mb-4 rounded-2xl bg-white border-2 p-3" style={{ borderColor: `${THEME.blue}44` }}>
