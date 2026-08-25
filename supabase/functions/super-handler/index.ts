@@ -246,6 +246,26 @@ function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
   return { ok: true, value };
 }
 
+// 1公演あたりの出演者(個人)。ここで拾わないとクライアントが送っても保存時に消えるので、
+// StagePerformer にフィールドを足したときは必ずここも合わせて更新すること。
+const MAX_PERFORMERS = 12;
+function sanitizePerformers(raw: unknown): Array<Record<string, unknown>> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const list: Array<Record<string, unknown>> = [];
+  for (const p of raw.slice(0, MAX_PERFORMERS)) {
+    if (!p || typeof p !== "object") continue;
+    const performer = p as Record<string, unknown>;
+    list.push({
+      id: ID_RE.test(str(performer.id, 64)) ? str(performer.id, 64) : `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: str(performer.name, 20),
+      role: str(performer.role, 12),
+      emoji: str(performer.emoji, 16) || "🎤",
+      description: str(performer.description, 120),
+    });
+  }
+  return list.length ? list : undefined;
+}
+
 function sanitizeStage(raw: Record<string, unknown>): Sanitized {
   const itemsRaw = Array.isArray(raw.items) ? raw.items : [];
   if (itemsRaw.length > 100) return { ok: false, reason: "公演が多すぎます(最大100件)" };
@@ -258,6 +278,7 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
     if (!TIME_RE.test(start) || !TIME_RE.test(end)) return { ok: false, reason: `公演「${str(item.title, 30) || "(無題)"}」の時刻はHH:MM形式にしてください` };
     const iconImage = str(item.iconImage, 120_000);
     if (iconImage && !ICON_RE.test(iconImage)) return { ok: false, reason: `公演「${str(item.title, 30) || "(無題)"}」のアイコン画像の形式が不正です` };
+    const performers = sanitizePerformers(item.performers);
     items.push({
       id: ID_RE.test(str(item.id, 64)) ? str(item.id, 64) : `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       title: str(item.title, 30),
@@ -271,6 +292,8 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
       iconImage,
       description: str(item.description, 120),
       venue: str(item.venue, 30) || "体育館ステージ",
+      // 出演者は任意。未設定の公演にはキーごと付けない
+      ...(performers ? { performers } : {}),
     });
   }
   // 会場一覧: 送られた一覧＋実際に使われている会場を統合し、最大12件・各30文字に制限

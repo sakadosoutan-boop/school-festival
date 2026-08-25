@@ -1,4 +1,4 @@
-import type { Booth, Product, StageItem, StageProgram } from "../types";
+import type { Booth, Product, StageItem, StagePerformer, StageProgram } from "../types";
 import { YANAGI_BOOTHS, YANAGI_STAGE_ITEMS, YANAGI_STAGE_LABEL, YANAGI_STAGE_NAME } from "./yanagi2026";
 
 /* ═══════════ CONFIG(v4プロトタイプ準拠) ═══════════ */
@@ -300,12 +300,50 @@ export const nowMin = (): number => { const d = new Date(); return d.getHours() 
 export const MAIN_STAGE = "体育館ステージ";
 export const STAGE_VENUES: string[] = [MAIN_STAGE, "音楽部（音楽室）", "演劇部（視聴覚室）", "放送部"];
 
+/* ── 出演者(個人)── 1つの公演に複数人が出る場合に使う。
+   例: SKD自慢王×歌謡祭 = 自慢王2名 + 歌うま王5名。ひとりずつ意気込みを書ける。 */
+export const MAX_PERFORMERS = 12;
+export const PERFORMER_NAME_MAX = 20;
+export const PERFORMER_ROLE_MAX = 12;
+export const PERFORMER_DESC_MAX = 120;
+// よく使う肩書き。自由入力もできるが、ワンタップで入れられるようにしておく
+export const PERFORMER_ROLE_PRESETS = ["自慢王", "歌うま王", "MC", "ゲスト", "伴奏"];
+export const PERFORMER_EMOJI_PALETTE = [
+  "🎤","🎙️","🎵","🎶","🎸","🎹","🎺","🥁","🪕","🎻",
+  "👑","🏆","⭐","🌟","✨","💫","🔥","💎","🎯","🎊",
+  "😎","🤩","😆","😊","🥳","😤","🙌","💪","👏","🫶",
+  "🐱","🐶","🐰","🦊","🐼","🐧","🦁","🐯","🦄","🌈",
+];
+
+// idは展開のあとに決める。partialに id:undefined が入っていても、生成したidが消えないようにするため
+export const makeStagePerformer = (partial: Partial<StagePerformer> = {}): StagePerformer => ({
+  name: "", role: "", emoji: "🎤", description: "",
+  ...partial,
+  id: partial.id || `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+});
+
+const sanitizePerformers = (raw: unknown): StagePerformer[] | undefined => {
+  if (!Array.isArray(raw)) return undefined;
+  const list = raw
+    .filter((p): p is Partial<StagePerformer> => !!p && typeof p === "object")
+    .slice(0, MAX_PERFORMERS)
+    .map((p) => makeStagePerformer({
+      id: typeof p.id === "string" ? p.id : undefined,
+      name: typeof p.name === "string" ? p.name.slice(0, PERFORMER_NAME_MAX) : "",
+      role: typeof p.role === "string" ? p.role.slice(0, PERFORMER_ROLE_MAX) : "",
+      emoji: typeof p.emoji === "string" && p.emoji ? p.emoji.slice(0, 16) : "🎤",
+      description: typeof p.description === "string" ? p.description.slice(0, PERFORMER_DESC_MAX) : "",
+    }));
+  return list.length ? list : undefined;
+};
+
 export const makeStageItem = (partial: Partial<StageItem> = {}): StageItem => ({
-  id: partial.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
   title: "", performer: "", start: "10:00", end: "10:20", note: "", canceled: false,
   day: 1,
   emoji: "🎤", iconImage: "", description: "", venue: MAIN_STAGE,
   ...partial,
+  // idは展開のあとに決める(sanitizeStageが id:undefined を渡してもidが消えないように)
+  id: partial.id || `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
 });
 
 // 初期プログラム = 体育館当日スケジュール(8/29・8/30)の実データ。
@@ -338,6 +376,8 @@ export const sanitizeStage = (sp: unknown): StageProgram => {
       iconImage: typeof it.iconImage === "string" ? it.iconImage : "",
       description: typeof it.description === "string" ? it.description : "",
       venue: typeof it.venue === "string" && it.venue ? it.venue : MAIN_STAGE,
+      // 出演者は任意。空配列にはせず、未設定なら undefined のままにする
+      performers: sanitizePerformers((it as { performers?: unknown }).performers),
     }));
   if (items.length === 0) return seedStage();
   // 会場一覧: 保存された一覧に、実際に使われている会場と既定会場を加えて重複を除く

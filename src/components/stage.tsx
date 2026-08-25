@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ChevronLeft, Clock, Coffee, MapPin, Plus, RefreshCw, Settings, Sparkles, Trash2, Upload, X } from "lucide-react";
 import {
-  EMOJI_PALETTE, itemStatus, MAIN_STAGE, makeStageItem, minToHHMM, nowMin, seedStage, sortItems, STAGE_VENUES, stageNowNext, THEME, toMin, todayFestivalDay,
+  EMOJI_PALETTE, itemStatus, MAIN_STAGE, makeStageItem, makeStagePerformer, MAX_PERFORMERS, minToHHMM, nowMin,
+  PERFORMER_DESC_MAX, PERFORMER_EMOJI_PALETTE, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, PERFORMER_ROLE_PRESETS,
+  seedStage, sortItems, STAGE_VENUES, stageNowNext, THEME, toMin, todayFestivalDay,
 } from "../lib/festival";
-import type { StageItem, StageProgram } from "../types";
+import type { StageItem, StagePerformer, StageProgram } from "../types";
 import { Confirm, EmptyState, Field, fileToIconDataUrl, Hint, IconButton, Sheet, TimeStepper } from "./ui";
 
 /* ── 公演アイコン: ブースと同じく画像 or 絵文字 ── */
@@ -37,9 +39,67 @@ const stageItemAriaLabel = (item: StageItem, venue: string): string => {
   return parts.join("・");
 };
 
+/* ── 出演者(個人)の表示 ──
+   同じ肩書きごとにまとめて並べる。意気込みが未入力の人も名前だけは出す。 */
+const performerGroups = (list: StagePerformer[]): { role: string; members: StagePerformer[] }[] => {
+  const order: string[] = [];
+  const byRole = new Map<string, StagePerformer[]>();
+  for (const p of list) {
+    const key = p.role.trim();
+    if (!byRole.has(key)) { byRole.set(key, []); order.push(key); }
+    byRole.get(key)!.push(p);
+  }
+  return order.map((role) => ({ role, members: byRole.get(role)! }));
+};
+
+const PerformerCard = ({ performer }: { performer: StagePerformer }) => (
+  <div className="p-3.5 rounded-2xl border" style={{ background: "var(--surface)", borderColor: `${THEME.purple}26` }}>
+    <div className="flex items-center gap-2.5 mb-1.5">
+      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0" style={{ background: "#f3ecff" }}>
+        {performer.emoji || "🎤"}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-black text-[15px] truncate" style={{ color: "var(--ink)" }}>{performer.name || "(名前未設定)"}</div>
+        {performer.role && (
+          <span className="inline-block text-[10px] font-black px-2 py-0.5 rounded-full mt-0.5"
+            style={{ background: `${THEME.purple}1a`, color: THEME.purple }}>{performer.role}</span>
+        )}
+      </div>
+    </div>
+    {performer.description
+      ? <p className="text-[13px] leading-relaxed whitespace-pre-wrap" style={{ color: "var(--ink)" }}>{performer.description}</p>
+      : <p className="text-[13px]" style={{ color: "var(--ink-soft)" }}>意気込みはまだ登録されていません</p>}
+  </div>
+);
+
+export const PerformerList = ({ performers }: { performers: StagePerformer[] }) => (
+  <div className="mt-5">
+    <div className="flex items-baseline gap-2 mb-2.5">
+      <div className="text-sm font-black" style={{ color: "var(--ink)" }}>出演者</div>
+      <div className="text-[11px] font-bold" style={{ color: "var(--ink-soft)" }}>{performers.length}名</div>
+    </div>
+    <div className="space-y-3">
+      {performerGroups(performers).map(({ role, members }) => (
+        <div key={role || "_"}>
+          {role && (
+            <div className="text-[11px] font-black mb-1.5 flex items-center gap-1.5" style={{ color: THEME.purple }}>
+              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ background: THEME.purple }} />
+              {role}（{members.length}名）
+            </div>
+          )}
+          <div className="space-y-2">
+            {members.map((p) => <PerformerCard key={p.id} performer={p} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 /* ── 公演の詳細シート(来場者向け) ── */
 const StageItemDetailSheet = ({ item, refMin, onClose }: { item: StageItem; refMin: number; onClose: () => void }) => {
   const st = itemStatus(item, refMin);
+  const performers = item.performers ?? [];
   return (
     <Sheet onClose={onClose} title="公演の詳細">
       <div className="px-6 pt-2 pb-8">
@@ -75,7 +135,8 @@ const StageItemDetailSheet = ({ item, refMin, onClose }: { item: StageItem; refM
         {item.note && <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-900 leading-relaxed">📢 {item.note}</div>}
         {item.description
           ? <p className="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap">{item.description}</p>
-          : <p className="text-sm text-stone-400">紹介文はまだ登録されていません</p>}
+          : performers.length === 0 && <p className="text-sm text-stone-400">紹介文はまだ登録されていません</p>}
+        {performers.length > 0 && <PerformerList performers={performers} />}
       </div>
     </Sheet>
   );
@@ -327,6 +388,14 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
                       <div className="flex-1 min-w-0">
                         <div className={`font-bold truncate text-sm ${item.canceled ? "line-through text-stone-400" : "text-stone-900"}`}>{item.title || "(無題)"}</div>
                         <div className="text-xs text-stone-500 truncate">{item.performer || "出演者未設定"}</div>
+                        {item.performers && item.performers.length > 0 && (
+                          <div className="mt-1 flex items-center gap-1 flex-wrap">
+                            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: `${THEME.purple}1a`, color: THEME.purple }}>
+                              👥 出演{item.performers.length}名
+                            </span>
+                            <span className="text-[10px] font-bold text-stone-400">意気込みを見る</span>
+                          </div>
+                        )}
                       </div>
                       <div className="text-right flex-shrink-0">
                         <div className="text-sm font-black tabular-nums" style={{ color: THEME.ink }}>{item.start}</div>
@@ -863,6 +932,16 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
                   <div className="flex-1 min-w-0">
                     <div className={`font-bold truncate ${item.canceled ? "line-through text-stone-400" : "text-stone-900"}`}>{item.title || "(無題)"}</div>
                     <div className="text-xs text-stone-500 truncate">{item.performer || "出演者未設定"}</div>
+                    {item.performers && item.performers.length > 0 && (() => {
+                      // 意気込みが未入力の人が残っていないか、一覧のまま分かるようにする
+                      const blank = item.performers.filter((p) => !p.description).length;
+                      return (
+                        <div className="mt-1 flex items-center gap-1 flex-wrap">
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full" style={{ background: `${THEME.purple}1a`, color: THEME.purple }}>👥 {item.performers.length}名</span>
+                          {blank > 0 && <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">意気込み未入力 {blank}名</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                   {st === "live" && <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full text-white flex-shrink-0" style={{ background: THEME.pink }}>上演中</span>}
                   {st === "done" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-400 flex-shrink-0">終了</span>}
@@ -892,13 +971,107 @@ export const StageEditor = ({ program, onSave, onBack, showToast }: { program: S
   );
 };
 
+/* ── 出演者ひとりぶんの編集(公演の編集シートの上に重ねて開く) ──
+   本人にスマホを渡してそのまま打ってもらえるよう、1画面に1人だけを出す。 */
+const StagePerformerEditor = ({ performer, isNew, onClose, onSave, onDelete }: {
+  performer: StagePerformer; isNew: boolean; onClose: () => void;
+  onSave: (p: StagePerformer) => void; onDelete: () => void;
+}) => {
+  const [form, setForm] = useState<StagePerformer>(performer);
+  const [confirmDel, setConfirmDel] = useState(false);
+  const set = <K extends keyof StagePerformer>(k: K, v: StagePerformer[K]) => setForm((p) => ({ ...p, [k]: v }));
+  const valid = Boolean(form.name.trim());
+
+  return (
+    <Sheet onClose={onClose} title={isNew ? "出演者を追加" : "出演者の編集"}>
+      <div className="px-5 pb-4 space-y-4 pt-1">
+        <Field label="アイコン">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-4xl flex-shrink-0 border-2"
+              style={{ background: "#f3ecff", borderColor: `${THEME.purple}44` }}>{form.emoji || "🎤"}</div>
+            <Hint>下から1つ選んでください</Hint>
+          </div>
+          <div className="p-3 bg-white rounded-2xl border border-stone-200 grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
+            {PERFORMER_EMOJI_PALETTE.map((e, i) => (
+              <button key={`${e}-${i}`} type="button" onClick={() => set("emoji", e)}
+                aria-label={`アイコンを${e}にする`} aria-pressed={form.emoji === e}
+                className={`aspect-square rounded-lg text-2xl flex items-center justify-center active:scale-90 transition-transform ${form.emoji === e ? "" : "hover:bg-stone-100"}`}
+                style={form.emoji === e ? { background: "#f3ecff", boxShadow: "inset 0 0 0 2px #9b5de5" } : {}}
+              >{e}</button>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="名前・ニックネーム" required>
+          <input type="text" value={form.name} onChange={(e) => set("name", e.target.value)} maxLength={PERFORMER_NAME_MAX}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base font-bold bg-white outline-none focus:border-stone-900"
+            placeholder="例: 坂戸 たろう" />
+          <Hint>来場者に見えます。フルネームでもニックネームでもかまいません({form.name.length}/{PERFORMER_NAME_MAX})</Hint>
+        </Field>
+
+        <Field label="肩書き">
+          <div className="flex gap-1.5 flex-wrap mb-2">
+            {PERFORMER_ROLE_PRESETS.map((r) => (
+              <button key={r} type="button" onClick={() => set("role", form.role === r ? "" : r)} aria-pressed={form.role === r}
+                className={`px-3 py-1.5 rounded-full text-xs font-extrabold border active:scale-95 transition-all ${form.role === r ? "text-white border-transparent" : "bg-white text-stone-600 border-stone-200"}`}
+                style={form.role === r ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>{r}</button>
+            ))}
+          </div>
+          <input type="text" value={form.role} onChange={(e) => set("role", e.target.value)} maxLength={PERFORMER_ROLE_MAX}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900"
+            placeholder="例: 歌うま王" />
+          <Hint>同じ肩書きの人は、来場者の画面でまとめて並びます</Hint>
+        </Field>
+
+        <Field label="意気込み・自己紹介">
+          <textarea value={form.description} onChange={(e) => set("description", e.target.value)} maxLength={PERFORMER_DESC_MAX} rows={4}
+            className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900 resize-none leading-relaxed"
+            placeholder="例: 3年間続けたカラオケの成果を出しきります！サビはぜひ一緒に歌ってください🎤" />
+          <Hint>公演をタップすると表示されます({form.description.length}/{PERFORMER_DESC_MAX})</Hint>
+        </Field>
+      </div>
+      <div className="sticky bottom-0 bg-stone-50/95 backdrop-blur-xl border-t border-stone-200 px-5 py-3 flex gap-2" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
+        {!isNew && (
+          <button onClick={() => setConfirmDel(true)} aria-label="この出演者を削除"
+            className="px-4 py-3 rounded-2xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95 flex items-center justify-center"><Trash2 size={16} strokeWidth={2.5} /></button>
+        )}
+        <button onClick={onClose} className="flex-1 px-4 py-3 rounded-2xl border border-stone-200 bg-white text-stone-700 font-bold text-sm active:scale-95">キャンセル</button>
+        <button onClick={() => valid && onSave({ ...form, name: form.name.trim(), role: form.role.trim(), description: form.description.trim(), emoji: (form.emoji || "🎤").trim() || "🎤" })} disabled={!valid}
+          className="flex-1 px-4 py-3 rounded-2xl text-white font-bold text-sm active:scale-95 disabled:opacity-40"
+          style={{ background: valid ? "linear-gradient(135deg,#9b5de5,#4cc9f0)" : "#a8a29e" }}>{isNew ? "追加する" : "保存する"}</button>
+      </div>
+      {confirmDel && <Confirm title="削除しますか?" message={`「${form.name || "この出演者"}」を出演者から外します。`} confirmLabel="削除する" danger
+        onConfirm={() => { onDelete(); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}
+    </Sheet>
+  );
+};
+
 const StageItemEditor = ({ item, isNew, venues, onClose, onSave, onDelete }: { item: StageItem; isNew: boolean; venues: string[]; onClose: () => void; onSave: (i: StageItem) => void; onDelete: () => void }) => {
   const [form, setForm] = useState<StageItem>(item || makeStageItem({}));
   const [confirmDel, setConfirmDel] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  // 出演者(個人)の編集。null=閉じている / "new"=追加 / それ以外=そのidを編集
+  const [editingPerformer, setEditingPerformer] = useState<StagePerformer | "new" | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const set = <K extends keyof StageItem>(k: K, v: StageItem[K]) => setForm((p) => ({ ...p, [k]: v }));
+
+  const performers = form.performers ?? [];
+  const setPerformers = (list: StagePerformer[]) => set("performers", list.length ? list : undefined);
+  const savePerformer = (p: StagePerformer) => {
+    setPerformers(performers.some((x) => x.id === p.id) ? performers.map((x) => (x.id === p.id ? p : x)) : [...performers, p]);
+    setEditingPerformer(null);
+  };
+  const removePerformer = (id: string) => { setPerformers(performers.filter((x) => x.id !== id)); setEditingPerformer(null); };
+  // 並び替え(1つ上/下へ)。肩書きごとの並び順は、この順番がそのまま来場者の画面に出る
+  const movePerformer = (index: number, delta: number) => {
+    const next = [...performers];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    const a = next[index]!, b = next[target]!;
+    next[index] = b; next[target] = a;
+    setPerformers(next);
+  };
   const bump = (field: "start" | "end", delta: number) => set(field, minToHHMM((toMin(form[field]) ?? 600) + delta));
   const valid = Boolean(form.title.trim()) && toMin(form.start) != null && toMin(form.end) != null && (toMin(form.end) ?? 0) > (toMin(form.start) ?? 0);
 
@@ -988,6 +1161,51 @@ const StageItemEditor = ({ item, isNew, venues, onClose, onSave, onDelete }: { i
             className="w-full px-4 py-3 rounded-xl border border-stone-200 text-base bg-white outline-none focus:border-stone-900" placeholder="例: 雨天のため室内に変更" />
           <Hint>来場者のタイムテーブルに黄色いお知らせとして表示されます</Hint>
         </Field>
+
+        {/* 出演者(個人)。複数人が出る公演で、ひとりずつ意気込みを書けるようにする */}
+        <Field label="出演者(任意)">
+          {performers.length === 0 && (
+            <p className="text-xs text-stone-500 mb-2 leading-relaxed">
+              複数人で出演する公演は、ひとりずつ登録できます。名前・肩書き・意気込みが来場者の画面に並びます。
+            </p>
+          )}
+          <div className="space-y-2 mb-2">
+            {performers.map((p, i) => (
+              <div key={p.id} className="flex items-center gap-2 p-2.5 bg-white rounded-2xl border border-stone-200">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0" style={{ background: "#f3ecff" }}>{p.emoji || "🎤"}</div>
+                <button type="button" onClick={() => setEditingPerformer(p)} className="flex-1 min-w-0 text-left active:scale-[0.99] transition-transform">
+                  <div className="font-bold text-sm truncate text-stone-900">{p.name || "(名前未設定)"}</div>
+                  <div className="text-[11px] truncate text-stone-500">
+                    {p.role ? `${p.role}・` : ""}{p.description ? "意気込みあり" : "意気込み未入力"}
+                  </div>
+                </button>
+                <div className="flex flex-col gap-0.5 flex-shrink-0">
+                  <button type="button" onClick={() => movePerformer(i, -1)} disabled={i === 0} aria-label={`${p.name || "この出演者"}を1つ上へ`}
+                    className="w-7 h-6 rounded-lg bg-stone-100 text-stone-600 text-[11px] font-black active:scale-90 disabled:opacity-30">▲</button>
+                  <button type="button" onClick={() => movePerformer(i, 1)} disabled={i === performers.length - 1} aria-label={`${p.name || "この出演者"}を1つ下へ`}
+                    className="w-7 h-6 rounded-lg bg-stone-100 text-stone-600 text-[11px] font-black active:scale-90 disabled:opacity-30">▼</button>
+                </div>
+                <button type="button" onClick={() => setEditingPerformer(p)} aria-label={`${p.name || "この出演者"}を編集`}
+                  className="w-9 h-9 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0 active:scale-90">
+                  <Settings size={15} className="text-indigo-600" strokeWidth={2.4} />
+                </button>
+              </div>
+            ))}
+          </div>
+          {performers.length < MAX_PERFORMERS ? (
+            <button type="button" onClick={() => setEditingPerformer("new")}
+              className="w-full flex items-center gap-2.5 p-3 bg-white rounded-2xl border-2 border-dashed border-stone-300 hover:border-stone-900 active:scale-[0.99] transition-all text-left">
+              <div className="w-9 h-9 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0"><Plus size={17} className="text-stone-700" strokeWidth={2.5} /></div>
+              <div>
+                <div className="font-bold text-sm text-stone-900">出演者を追加</div>
+                <div className="text-[11px] text-stone-500">名前・肩書き・意気込みを登録</div>
+              </div>
+            </button>
+          ) : (
+            <Hint>出演者は最大{MAX_PERFORMERS}名までです</Hint>
+          )}
+          {performers.length > 0 && <Hint>▲▼で並び順を変えられます。この順番のまま来場者に表示されます</Hint>}
+        </Field>
       </div>
       <div className="sticky bottom-0 bg-stone-50/95 backdrop-blur-xl border-t border-stone-200 px-5 py-3 flex gap-2" style={{ paddingBottom: "max(env(safe-area-inset-bottom), 12px)" }}>
         {!isNew && <button onClick={() => setConfirmDel(true)} className="px-4 py-3 rounded-2xl border border-red-200 bg-white text-red-600 font-bold text-sm active:scale-95 flex items-center justify-center" aria-label="削除"><Trash2 size={16} strokeWidth={2.5} /></button>}
@@ -996,6 +1214,15 @@ const StageItemEditor = ({ item, isNew, venues, onClose, onSave, onDelete }: { i
           className="flex-1 px-4 py-3 rounded-2xl text-white font-bold text-sm active:scale-95 disabled:opacity-40" style={{ background: valid ? "linear-gradient(135deg,#ff4d8d,#9b5de5)" : "#a8a29e" }}>{isNew ? "追加する" : "保存する"}</button>
       </div>
       {confirmDel && <Confirm title="削除しますか?" message={`「${form.title}」を削除します。`} confirmLabel="削除する" danger onConfirm={() => { onDelete(); setConfirmDel(false); }} onCancel={() => setConfirmDel(false)} />}
+      {editingPerformer && (
+        <StagePerformerEditor
+          performer={editingPerformer === "new" ? makeStagePerformer() : editingPerformer}
+          isNew={editingPerformer === "new"}
+          onClose={() => setEditingPerformer(null)}
+          onSave={savePerformer}
+          onDelete={() => { if (editingPerformer !== "new") removePerformer(editingPerformer.id); }}
+        />
+      )}
     </Sheet>
   );
 };
