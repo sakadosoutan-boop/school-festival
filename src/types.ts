@@ -53,13 +53,14 @@ export interface Booth {
 
 // 1つの公演に複数人が出演する場合の、出演者ひとりぶんの情報。
 // (例: SKD自慢王×歌謡祭 = 自慢王2名 + 歌うま王5名)
-// ステージ全体で1ドキュメントのため、画像は持たせず絵文字だけにしている。
 export interface StagePerformer {
   id: string;
   name: string;
   // 役割。「自慢王」「歌うま王」などの肩書き(自由入力)
   role: string;
   emoji: string;
+  // 顔写真・イラスト。ステージ全体で1ドキュメントのため、公演アイコンより小さく保存する
+  iconImage: string;
   // 意気込み・自己紹介。来場者が公演の詳細を開くと表示される
   description: string;
 }

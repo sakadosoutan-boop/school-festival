@@ -249,21 +249,29 @@ function sanitizeBooth(raw: Record<string, unknown>): Sanitized {
 // 1公演あたりの出演者(個人)。ここで拾わないとクライアントが送っても保存時に消えるので、
 // StagePerformer にフィールドを足したときは必ずここも合わせて更新すること。
 const MAX_PERFORMERS = 12;
-function sanitizePerformers(raw: unknown): Array<Record<string, unknown>> | undefined {
-  if (!Array.isArray(raw)) return undefined;
+// 出演者の顔写真は128pxで保存される想定。公演アイコン(120KB)より小さい上限にする
+const MAX_PERFORMER_ICON_CHARS = 40_000;
+function sanitizePerformers(raw: unknown): { ok: false; reason: string } | { ok: true; value: Array<Record<string, unknown>> | undefined } {
+  if (!Array.isArray(raw)) return { ok: true, value: undefined };
   const list: Array<Record<string, unknown>> = [];
   for (const p of raw.slice(0, MAX_PERFORMERS)) {
     if (!p || typeof p !== "object") continue;
     const performer = p as Record<string, unknown>;
+    const name = str(performer.name, 20);
+    const iconImage = str(performer.iconImage, MAX_PERFORMER_ICON_CHARS);
+    if (iconImage && !ICON_RE.test(iconImage)) {
+      return { ok: false, reason: `出演者「${name || "(名前未設定)"}」の画像の形式が不正です` };
+    }
     list.push({
       id: ID_RE.test(str(performer.id, 64)) ? str(performer.id, 64) : `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      name: str(performer.name, 20),
+      name,
       role: str(performer.role, 12),
       emoji: str(performer.emoji, 16) || "🎤",
+      iconImage,
       description: str(performer.description, 120),
     });
   }
-  return list.length ? list : undefined;
+  return { ok: true, value: list.length ? list : undefined };
 }
 
 function sanitizeStage(raw: Record<string, unknown>): Sanitized {
@@ -279,6 +287,7 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
     const iconImage = str(item.iconImage, 120_000);
     if (iconImage && !ICON_RE.test(iconImage)) return { ok: false, reason: `公演「${str(item.title, 30) || "(無題)"}」のアイコン画像の形式が不正です` };
     const performers = sanitizePerformers(item.performers);
+    if (!performers.ok) return { ok: false, reason: performers.reason };
     items.push({
       id: ID_RE.test(str(item.id, 64)) ? str(item.id, 64) : `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       title: str(item.title, 30),
@@ -293,7 +302,7 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
       description: str(item.description, 120),
       venue: str(item.venue, 30) || "体育館ステージ",
       // 出演者は任意。未設定の公演にはキーごと付けない
-      ...(performers ? { performers } : {}),
+      ...(performers.value ? { performers: performers.value } : {}),
     });
   }
   // 会場一覧: 送られた一覧＋実際に使われている会場を統合し、最大12件・各30文字に制限
@@ -313,7 +322,7 @@ function sanitizeStage(raw: Record<string, unknown>): Sanitized {
   };
   // ステージは全公演で1ドキュメントのため、アイコン画像の合計サイズを制限する
   if (JSON.stringify(value).length > 600_000) {
-    return { ok: false, reason: "ステージ全体のデータが大きすぎます(アイコン画像を何枚か外してください)" };
+    return { ok: false, reason: "ステージ全体のデータが大きすぎます(公演のアイコン画像か出演者の写真を何枚か外してください)" };
   }
   return { ok: true, value };
 }

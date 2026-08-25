@@ -31,9 +31,10 @@ export function daysUntilFestival(now = Date.now()): number | null {
 // 食品表示の特定原材料8品目。商品ごとに含むものを選んで表示する(目安表示)。
 export const ALLERGENS = ["卵", "乳", "小麦", "そば", "落花生", "えび", "かに", "くるみ"] as const;
 
-// 企画投票用GoogleフォームのURL。空ならバナー自体を表示しない
-// (プレースホルダーの死にリンクを本番に出さないため、環境変数で注入する)。
-export const VOTE_FORM_URL = ((import.meta.env?.VITE_VOTE_FORM_URL as string | undefined) ?? "").trim();
+// 企画投票用GoogleフォームのURL。第53回(2026年度)のフォーム。
+// 年度が変わったら、ここを書き換えるか VITE_VOTE_FORM_URL で上書きする。
+const VOTE_FORM_URL_2026 = "https://docs.google.com/forms/d/e/1FAIpQLSfToKlZF8VpfhMqRW4IztZ8Ot7G42BIQcT1fjWSQ3y3ax7gVg/viewform";
+export const VOTE_FORM_URL = ((import.meta.env?.VITE_VOTE_FORM_URL as string | undefined) ?? VOTE_FORM_URL_2026).trim();
 
 export const THEME = {
   cream: "#fff7ed",
@@ -300,6 +301,15 @@ export const nowMin = (): number => { const d = new Date(); return d.getHours() 
 export const MAIN_STAGE = "体育館ステージ";
 export const STAGE_VENUES: string[] = [MAIN_STAGE, "音楽部（音楽室）", "演劇部（視聴覚室）", "放送部"];
 
+// 会場ごとのアイコン。会場名は自由入力もできるので、キーワードで判定する
+export const venueEmoji = (venue: string): string => {
+  if (!venue || venue === MAIN_STAGE) return "🎤";
+  if (venue.includes("音楽")) return "🎵";
+  if (venue.includes("演劇")) return "🎭";
+  if (venue.includes("放送")) return "📷";
+  return "🎪";
+};
+
 /* ── 出演者(個人)── 1つの公演に複数人が出る場合に使う。
    例: SKD自慢王×歌謡祭 = 自慢王2名 + 歌うま王5名。ひとりずつ意気込みを書ける。 */
 export const MAX_PERFORMERS = 12;
@@ -316,8 +326,11 @@ export const PERFORMER_EMOJI_PALETTE = [
 ];
 
 // idは展開のあとに決める。partialに id:undefined が入っていても、生成したidが消えないようにするため
+// 出演者の顔写真は小さくしか表示しないので、公演アイコン(256px)より小さく保存する
+export const PERFORMER_ICON_PX = 128;
+
 export const makeStagePerformer = (partial: Partial<StagePerformer> = {}): StagePerformer => ({
-  name: "", role: "", emoji: "🎤", description: "",
+  name: "", role: "", emoji: "🎤", iconImage: "", description: "",
   ...partial,
   id: partial.id || `p_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
 });
@@ -332,6 +345,7 @@ const sanitizePerformers = (raw: unknown): StagePerformer[] | undefined => {
       name: typeof p.name === "string" ? p.name.slice(0, PERFORMER_NAME_MAX) : "",
       role: typeof p.role === "string" ? p.role.slice(0, PERFORMER_ROLE_MAX) : "",
       emoji: typeof p.emoji === "string" && p.emoji ? p.emoji.slice(0, 16) : "🎤",
+      iconImage: typeof p.iconImage === "string" ? p.iconImage : "",
       description: typeof p.description === "string" ? p.description.slice(0, PERFORMER_DESC_MAX) : "",
     }));
   return list.length ? list : undefined;

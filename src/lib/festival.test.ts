@@ -4,7 +4,7 @@ import {
   itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_PERFORMERS, MAX_WAIT_MINUTES, minToHHMM, normRoom,
   PERFORMER_DESC_MAX, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, sanitizeStage,
   seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, summarizeBooths, toMin,
-  todayFestivalDay, undoSecondsLeft,
+  todayFestivalDay, undoSecondsLeft, venueEmoji,
 } from "./festival";
 import type { Booth } from "../types";
 
@@ -238,6 +238,31 @@ describe("stage performers", () => {
   it("does not touch performances that have no performers", () => {
     const program = sanitizeStage({ items: [{ id: "s1", title: "吹奏楽部", start: "12:30", end: "13:10" }] });
     expect(program.items[0]!.performers).toBeUndefined();
+  });
+
+  it("keeps the icon image and defaults it to empty", () => {
+    const withImage = withPerformers([{ name: "たろう", iconImage: "data:image/jpeg;base64,AAAA" }]);
+    expect(withImage.performers![0]!.iconImage).toBe("data:image/jpeg;base64,AAAA");
+    expect(withPerformers([{ name: "はなこ" }]).performers![0]!.iconImage).toBe("");
+  });
+});
+
+describe("venueEmoji", () => {
+  it("gives each club venue its own icon", () => {
+    expect(venueEmoji("体育館ステージ")).toBe("🎤");
+    expect(venueEmoji("音楽部（音楽室）")).toBe("🎵");
+    expect(venueEmoji("演劇部（視聴覚室）")).toBe("🎭");
+    expect(venueEmoji("放送部")).toBe("📷");
+  });
+
+  it("matches by keyword so renamed venues keep their icon", () => {
+    expect(venueEmoji("音楽室")).toBe("🎵");
+    expect(venueEmoji("演劇部 第2公演")).toBe("🎭");
+  });
+
+  it("falls back for empty or unknown venues", () => {
+    expect(venueEmoji("")).toBe("🎤");
+    expect(venueEmoji("中庭ステージ")).toBe("🎪");
   });
 });
 
