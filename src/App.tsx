@@ -13,7 +13,7 @@ import { normalizeForSearch } from "./lib/text";
 import { boothSearchText, buildCourses, closingNotice, isDensity, isKidsFriendly } from "./lib/guest-helpers";
 import type { Density } from "./lib/guest-helpers";
 import type { Booth, FestivalNotice, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
-import { EmptyState, SkipLink, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll, useTextScale, useTheme } from "./components/ui";
+import { EmptyState, Sheet, SkipLink, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll, useTextScale, useTheme } from "./components/ui";
 import type { ToastType } from "./components/ui";
 import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
 import { CourseSuggestions } from "./components/courses";
@@ -25,6 +25,49 @@ import { StageEditor, StageView } from "./components/stage";
 import { MapView } from "./components/map";
 import logoSrc from "./assets/logo.png";
 import { usePwaInstall } from "./lib/pwa";
+
+/* ── おたのしみの入口 ──
+   スタンプラリーとおすすめコースは一覧の下に置くと最下部まで誰も来ないので、
+   絞り込みのすぐ下に細い1行を置いて、そこからシートで開けるようにする。
+   スタンプ側は進捗そのものを出すので、開かなくても「いま何個か」は分かる。 */
+const FunEntryBar = ({ stamps, total, rankEmoji, rankLabel, courseCount, onOpenRally, onOpenCourses }: {
+  stamps: number; total: number; rankEmoji: string; rankLabel: string; courseCount: number;
+  onOpenRally: () => void; onOpenCourses: () => void;
+}) => {
+  const percent = total > 0 ? Math.min(100, Math.round((stamps / total) * 100)) : 0;
+  return (
+    <div className="flex items-stretch gap-2 mb-3">
+      <button onClick={onOpenRally}
+        aria-label={`スタンプラリー。${total}企画中${stamps}企画をまわりました。${rankLabel}。タップで開く`}
+        className="flex-1 min-w-0 text-left rounded-xl px-2.5 py-1.5 border-2 bg-white active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-500"
+        style={{ borderColor: `${THEME.pink}44` }}>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] leading-none flex-shrink-0">🎫</span>
+          <span className="text-[11px] font-black flex-shrink-0" style={{ color: "var(--ink)" }}>スタンプラリー</span>
+          {/* 称号は絵文字だけ。名前まで出すと390px幅で切れるので、フルネームはシートで見せる */}
+          <span className="ml-auto text-[11px] font-black tabular-nums whitespace-nowrap" style={{ color: THEME.pinkDeep }}>
+            {stamps === 0 ? "詳細から押せます" : `${stamps}/${total} ${rankEmoji}`}
+          </span>
+          <ChevronRight size={13} className="text-stone-300 flex-shrink-0" strokeWidth={3} />
+        </div>
+        <div className="mt-1 h-1 rounded-full overflow-hidden bg-stone-100">
+          <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(percent, stamps > 0 ? 4 : 0)}%`, background: `linear-gradient(90deg,${THEME.orange},${THEME.pink})` }} />
+        </div>
+      </button>
+      {courseCount > 0 && (
+        <button onClick={onOpenCourses}
+          aria-label={`おすすめコース${courseCount}本。タップで開く`}
+          className="flex-shrink-0 flex items-center gap-1 rounded-xl px-2.5 border-2 bg-white active:scale-[0.98] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+          style={{ borderColor: `${THEME.blue}44` }}>
+          <span className="text-[13px] leading-none">🗺️</span>
+          <span className="text-[11px] font-black whitespace-nowrap" style={{ color: "var(--ink)" }}>コース</span>
+          <span className="text-[11px] font-black tabular-nums" style={{ color: "#2b9dc4" }}>{courseCount}</span>
+          <ChevronRight size={13} className="text-stone-300" strokeWidth={3} />
+        </button>
+      )}
+    </div>
+  );
+};
 
 const LOCAL_KEY = "machitime:v6:local";
 const SESSION_PIN_KEY = "machitime:v6:staff-pin";
@@ -111,6 +154,8 @@ function AppInner(): React.JSX.Element {
   const [creating, setCreating] = useState(false);
   const [calcOpen, setCalcOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // おたのしみのシート。null=閉じている
+  const [funSheet, setFunSheet] = useState<"rally" | "courses" | null>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -621,6 +666,7 @@ function AppInner(): React.JSX.Element {
     const ids = new Set(rallyVisited);
     return booths.filter((b) => ids.has(b.id)).length;
   }, [booths, rallyVisited]);
+  const rallyRankNow = useMemo(() => rallyRank(rallyCount, booths.length), [rallyCount, booths.length]);
   // 校舎入場終了(15:30)の案内。開催日以外は出さない。tickで20秒ごとに再判定する。
   const closing = useMemo(() => closingNotice(), [tick]);
 
@@ -668,6 +714,28 @@ function AppInner(): React.JSX.Element {
       {calcOpen && staffBooth && <CalculatorSheet booth={staffBooth} onClose={() => setCalcOpen(false)} onApply={(u) => { updateBooth(staffBooth.id, u); setCalcOpen(false); showToast(`待ち時間を ${u.waitMinutes}分 に更新しました`); }} />}
       {(editingId || creating) && <EditBoothSheet booth={creating ? null : booths.find((b) => b.id === editingId) ?? null} isNew={creating} onClose={() => { setEditingId(null); setCreating(false); }} onSave={handleSaveBooth} onDelete={() => { if (editingId) void handleDeleteBooth(editingId); }} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
+      {funSheet === "rally" && (
+        <Sheet onClose={() => setFunSheet(null)} title="スタンプラリー">
+          <div className="px-5 pb-8 pt-1">
+            <StampRallyCard count={rallyCount} total={booths.length} onReset={resetRally} />
+            <div className="mt-3 rounded-2xl p-3.5 border" style={{ background: "var(--surface)", borderColor: "var(--line)" }}>
+              <div className="text-xs font-black mb-1.5" style={{ color: "var(--ink)" }}>ためかた</div>
+              <p className="text-[13px] leading-relaxed" style={{ color: "var(--ink-soft)" }}>
+                企画をタップして詳細をひらき、<strong style={{ color: THEME.pinkDeep }}>「🎫 ここに行った！スタンプを押す」</strong>を押すと1つたまります。
+                回った数に応じて称号が変わり、全部まわると認定証がもらえます。
+              </p>
+              <p className="text-[11px] mt-2" style={{ color: "var(--ink-soft)" }}>記録はこの端末の中だけに保存されます。</p>
+            </div>
+          </div>
+        </Sheet>
+      )}
+      {funSheet === "courses" && (
+        <Sheet onClose={() => setFunSheet(null)} title="おすすめコース">
+          <div className="px-5 pb-8 pt-1">
+            <CourseSuggestions courses={courses} defaultOpen onSelect={(id) => { setFunSheet(null); setSelectedId(id); }} />
+          </div>
+        </Sheet>
+      )}
       {installHelpOpen && <InstallInstructionsSheet platform={installPlatform} onClose={() => setInstallHelpOpen(false)} />}
       {settingsOpen && staffRole && (
         <SettingsSheet
@@ -921,7 +989,15 @@ function AppInner(): React.JSX.Element {
               )}
             </div>
 
-            {/* スタンプラリーとおすすめコースは一覧の下(すぐ使う情報を上に出すため) */}
+            {/* おたのしみ(スタンプラリー・おすすめコース)は、一覧の下だと気づかれないので
+                絞り込みのすぐ下に細い入口を置き、中身はシートで開く */}
+            {booths.length > 0 && (
+              <FunEntryBar
+                stamps={rallyCount} total={booths.length} rankEmoji={rallyRankNow.emoji} rankLabel={rallyRankNow.title}
+                courseCount={courses.length}
+                onOpenRally={() => setFunSheet("rally")} onOpenCourses={() => setFunSheet("courses")}
+              />
+            )}
 
             <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
               <div className="text-xs font-bold" style={{ color: "var(--ink)" }}>{filtered.length}件のブース</div>
@@ -973,11 +1049,6 @@ function AppInner(): React.JSX.Element {
                   : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます"
                   : "検索語やカテゴリを変えてお試しください"} />
             )}
-            <div className="mt-5">
-              {booths.length > 0 && <StampRallyCard count={rallyCount} total={booths.length} onReset={resetRally} />}
-              <CourseSuggestions courses={courses} onSelect={(id) => setSelectedId(id)} />
-            </div>
-
             <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · 最終同期 {syncLabel} · {STALE_MINUTES}分以上更新がないと「情報が古い」と表示されます</div>
           </main>
         </>
