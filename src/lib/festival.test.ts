@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, daysUntilFestival, formatLocation, isSoldOut,
-  itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_WAIT_MINUTES, minToHHMM, normRoom, sanitizeStage,
+  itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_PERFORMERS, MAX_WAIT_MINUTES, minToHHMM, normRoom,
+  PERFORMER_DESC_MAX, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, sanitizeStage,
   seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, summarizeBooths, toMin,
   todayFestivalDay, undoSecondsLeft,
 } from "./festival";
@@ -192,6 +193,51 @@ describe("stage item profile (icon / description)", () => {
     });
     expect(program.items[0]!.emoji).toBe("🎸");
     expect(program.items[0]!.description).toBe("熱演");
+  });
+});
+
+describe("stage performers", () => {
+  const withPerformers = (performers: unknown) => sanitizeStage({
+    items: [{ id: "s1", title: "自慢王", start: "14:30", end: "15:15", performers }],
+  }).items[0]!;
+
+  it("keeps name, role, emoji and description", () => {
+    const item = withPerformers([
+      { id: "p1", name: "たろう", role: "自慢王", emoji: "👑", description: "優勝します" },
+      { id: "p2", name: "はなこ", role: "歌うま王", emoji: "🎤", description: "" },
+    ]);
+    expect(item.performers).toHaveLength(2);
+    expect(item.performers![0]).toMatchObject({ name: "たろう", role: "自慢王", emoji: "👑", description: "優勝します" });
+    expect(item.performers![1]!.description).toBe("");
+  });
+
+  it("leaves performers undefined when absent or empty", () => {
+    expect(withPerformers(undefined).performers).toBeUndefined();
+    expect(withPerformers([]).performers).toBeUndefined();
+    expect(withPerformers("not-an-array").performers).toBeUndefined();
+  });
+
+  it("drops junk entries and fills defaults", () => {
+    const item = withPerformers([null, "x", { name: "のぞみ" }]);
+    expect(item.performers).toHaveLength(1);
+    expect(item.performers![0]!.name).toBe("のぞみ");
+    expect(item.performers![0]!.emoji).toBe("🎤");
+    expect(item.performers![0]!.role).toBe("");
+    expect(item.performers![0]!.id).toMatch(/^p_/);
+  });
+
+  it("caps the list and trims over-long text", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ name: `p${i}` }));
+    expect(withPerformers(many).performers).toHaveLength(MAX_PERFORMERS);
+    const long = withPerformers([{ name: "あ".repeat(50), role: "い".repeat(50), description: "う".repeat(300) }]);
+    expect(long.performers![0]!.name).toHaveLength(PERFORMER_NAME_MAX);
+    expect(long.performers![0]!.role).toHaveLength(PERFORMER_ROLE_MAX);
+    expect(long.performers![0]!.description).toHaveLength(PERFORMER_DESC_MAX);
+  });
+
+  it("does not touch performances that have no performers", () => {
+    const program = sanitizeStage({ items: [{ id: "s1", title: "吹奏楽部", start: "12:30", end: "13:10" }] });
+    expect(program.items[0]!.performers).toBeUndefined();
   });
 });
 
