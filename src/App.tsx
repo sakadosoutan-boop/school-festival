@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight, Eye, HelpCircle, LayoutGrid, List, Map as MapIcon, Megaphone, Monitor, Moon, Music, RefreshCw, ShieldCheck, Star, Sun, Type, WifiOff } from "lucide-react";
 import {
   allSoldOut, avgCycle, BUILDINGS, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
-  sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME, todayFestivalDay, VOTE_FORM_URL,
+  findVenueForBooth, MAIN_STAGE, sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME,
+  todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
   apiConfigError, backendConfigured, cachedData, changePin, createSnapshot, deleteBooth as apiDeleteBooth, fetchAll,
@@ -156,6 +157,8 @@ function AppInner(): React.JSX.Element {
   const [helpOpen, setHelpOpen] = useState(false);
   // おたのしみのシート。null=閉じている
   const [funSheet, setFunSheet] = useState<"rally" | "courses" | null>(null);
+  // ブースの詳細から開いたステージ会場(ステージタブでその会場を選んだ状態にする)
+  const [stageFocusVenue, setStageFocusVenue] = useState<string | null>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -446,6 +449,13 @@ function AppInner(): React.JSX.Element {
     setView("map");
   }, []);
 
+  // 演劇部・音楽部・放送部などのブースから、その団体の上演スケジュールへ飛ぶ
+  const showStageVenue = useCallback((venue: string) => {
+    setSelectedId(null);
+    setStageFocusVenue(venue);
+    setView("stage");
+  }, []);
+
   /* ── 作成・編集・削除 ── */
   const handleSaveBooth = useCallback((data: Booth) => {
     if (creating) {
@@ -690,6 +700,13 @@ function AppInner(): React.JSX.Element {
   const { mode: themeMode, cycle: cycleTheme } = useTheme();
   const staffBooth = booths.find((b) => b.id === staffBoothId);
   const selectedBooth = booths.find((b) => b.id === selectedId);
+  // そのブースがステージ会場も持っているか(演劇部→「演劇部（視聴覚室）」など)。
+  // 公演が1件も登録されていない会場はタブに出ないので、リンクも出さない。
+  const selectedBoothVenue = useMemo(() => {
+    if (!selectedBooth || !stage) return null;
+    const withItems = [...new Set((stage.items || []).map((i) => i.venue || MAIN_STAGE))];
+    return findVenueForBooth(selectedBooth, withItems);
+  }, [selectedBooth, stage]);
   void tick; // 20秒ごとの再レンダリングで相対時刻・進行状況を進める
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-stone-50"><Spinner /></div>;
@@ -702,7 +719,7 @@ function AppInner(): React.JSX.Element {
       {toast && <Toast message={toast.message} type={toast.type} />}
 
       {/* Sheets */}
-      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} stamped={rallyVisited.includes(selectedBooth.id)} onToggleStamp={(id) => {
+      {selectedBooth && <BoothDetailSheet booth={selectedBooth} onClose={() => setSelectedId(null)} isFavorite={favorites.includes(selectedBooth.id)} onToggleFavorite={toggleFavorite} onShowOnMap={showBoothOnMap} offline={offline} stageVenue={selectedBoothVenue} onShowStage={showStageVenue} stamped={rallyVisited.includes(selectedBooth.id)} onToggleStamp={(id) => {
         if (rallyVisited.includes(id)) { removeRallyVisit(id); return; }
         recordRallyVisit(id);
         setConfetti(true);
@@ -1078,7 +1095,7 @@ function AppInner(): React.JSX.Element {
       )}
 
       {/* STAGE (guest) */}
-      {view === "stage" && <StageView program={stage} tick={tick} />}
+      {view === "stage" && <StageView program={stage} tick={tick} focusVenue={stageFocusVenue} />}
 
       {/* MAP (guest) */}
       {view === "map" && <MapView booths={booths} onJump={(id) => setSelectedId(id)} onOpenStage={() => setView("stage")} focusBoothId={mapFocusId} />}

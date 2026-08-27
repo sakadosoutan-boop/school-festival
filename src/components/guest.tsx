@@ -3,7 +3,7 @@ import { AlertTriangle, BookOpen, ChevronRight, Heart, HelpCircle, Info, MapPin,
 import type { LucideIcon } from "lucide-react";
 import {
   accentFor, allSoldOut, CATEGORIES, computeTrend, formatLocation, formatOrganizer, formatRelative,
-  freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, VERY_STALE_MINUTES,
+  freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, venueEmoji, VERY_STALE_MINUTES,
 } from "../lib/festival";
 import { isKidsFriendly, summarizeWaitHistory } from "../lib/guest-helpers";
 import { DEMO_ADMIN_PIN, DEMO_STAFF_PIN, backendConfigured } from "../lib/api";
@@ -188,7 +188,7 @@ const InfoRow = ({ icon: Icon, label, value, multiline }: { icon: LucideIcon; la
   </div>
 );
 
-export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite, onShowOnMap, offline, stamped, onToggleStamp }: { booth: Booth; onClose: () => void; isFavorite: boolean; onToggleFavorite: (id: string) => void; onShowOnMap?: (booth: Booth) => void; offline?: boolean; stamped?: boolean; onToggleStamp?: (id: string) => void }) => {
+export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite, onShowOnMap, offline, stamped, onToggleStamp, stageVenue, onShowStage }: { booth: Booth; onClose: () => void; isFavorite: boolean; onToggleFavorite: (id: string) => void; onShowOnMap?: (booth: Booth) => void; offline?: boolean; stamped?: boolean; onToggleStamp?: (id: string) => void; stageVenue?: string | null; onShowStage?: (venue: string) => void }) => {
   const f = freshness(booth);
   const showNumber = booth.isOpen && f !== "very_stale";
   const status = getStatus(booth.waitMinutes, booth.isOpen);
@@ -325,6 +325,22 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite,
             </button>
           ) : (
             <InfoRow icon={MapPin} label="場所" value={formatLocation(booth)} />
+          )}
+          {/* 演劇部・音楽部・放送部などは上演スケジュールを持つ。
+              ブースの詳細からそのままタイムテーブルへ飛べるようにする */}
+          {stageVenue && onShowStage && (
+            <button type="button" onClick={() => onShowStage(stageVenue)}
+              className="w-full flex gap-3 items-center text-left rounded-2xl p-2.5 border-2 active:scale-[0.99] transition-transform"
+              style={{ background: "#f3ecff", borderColor: `${THEME.purple}44` }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-lg" style={{ background: "#fff" }}>
+                {venueEmoji(stageVenue)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold mb-0.5" style={{ color: THEME.purple }}>上演スケジュール</div>
+                <div className="text-sm font-bold truncate" style={{ color: "var(--ink)" }}>{stageVenue}</div>
+              </div>
+              <span className="text-xs font-black flex-shrink-0" style={{ color: THEME.purple }}>時間割を見る →</span>
+            </button>
           )}
           <InfoRow icon={Info} label="紹介" value={booth.description} multiline />
         </div>

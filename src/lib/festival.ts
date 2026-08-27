@@ -301,6 +301,32 @@ export const nowMin = (): number => { const d = new Date(); return d.getHours() 
 export const MAIN_STAGE = "体育館ステージ";
 export const STAGE_VENUES: string[] = [MAIN_STAGE, "音楽部（音楽室）", "演劇部（視聴覚室）", "放送部"];
 
+/**
+ * ブースに対応するステージ会場を探す。
+ * 演劇部・音楽部・放送部などは「ブース」としても一覧に載っているので、
+ * その詳細から自分の上演スケジュールへ飛べるようにするために使う。
+ * 例: 団体名「演劇部」 ⇔ 会場「演劇部（視聴覚室）」
+ */
+export const findVenueForBooth = (
+  booth: { orgName?: string; name?: string; room?: string },
+  venues: string[],
+): string | null => {
+  const org = (booth.orgName || "").trim();
+  const name = (booth.name || "").trim();
+  const room = (booth.room || "").trim();
+  for (const venue of venues) {
+    if (!venue || venue === MAIN_STAGE) continue;
+    // 「演劇部（視聴覚室）」を 団体名「演劇部」と教室「視聴覚室」に分けて突き合わせる
+    const base = (venue.split(/[（(]/)[0] ?? "").trim();
+    const inner = (venue.match(/[（(]([^）)]+)[）)]/)?.[1] ?? "").trim();
+    if (!base) continue;
+    if (org && (org.includes(base) || base.includes(org))) return venue;
+    if (name && name.includes(base)) return venue;
+    if (room && inner && (room.includes(inner) || inner.includes(room))) return venue;
+  }
+  return null;
+};
+
 // 会場ごとのアイコン。会場名は自由入力もできるので、キーワードで判定する
 export const venueEmoji = (venue: string): string => {
   if (!venue || venue === MAIN_STAGE) return "🎤";
