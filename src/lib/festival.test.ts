@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, daysUntilFestival, formatLocation, isSoldOut,
+  ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, daysUntilFestival, findVenueForBooth, formatLocation, isSoldOut,
   itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_PERFORMERS, MAX_WAIT_MINUTES, minToHHMM, normRoom,
   PERFORMER_DESC_MAX, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, sanitizeStage,
   seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, summarizeBooths, toMin,
@@ -244,6 +244,34 @@ describe("stage performers", () => {
     const withImage = withPerformers([{ name: "たろう", iconImage: "data:image/jpeg;base64,AAAA" }]);
     expect(withImage.performers![0]!.iconImage).toBe("data:image/jpeg;base64,AAAA");
     expect(withPerformers([{ name: "はなこ" }]).performers![0]!.iconImage).toBe("");
+  });
+});
+
+describe("findVenueForBooth", () => {
+  const venues = ["体育館ステージ", "音楽部（音楽室）", "演劇部（視聴覚室）", "放送部"];
+
+  it("matches a club booth to its own stage venue", () => {
+    expect(findVenueForBooth({ orgName: "演劇部" }, venues)).toBe("演劇部（視聴覚室）");
+    expect(findVenueForBooth({ orgName: "音楽部" }, venues)).toBe("音楽部（音楽室）");
+    expect(findVenueForBooth({ orgName: "放送部" }, venues)).toBe("放送部");
+  });
+
+  it("falls back to the booth name and the room", () => {
+    expect(findVenueForBooth({ name: "演劇部 公演" }, venues)).toBe("演劇部（視聴覚室）");
+    expect(findVenueForBooth({ room: "音楽室" }, venues)).toBe("音楽部（音楽室）");
+  });
+
+  it("returns null for booths with no stage of their own", () => {
+    expect(findVenueForBooth({ orgName: "1年1組", room: "1-1" }, venues)).toBeNull();
+    expect(findVenueForBooth({ orgName: "美術部" }, venues)).toBeNull();
+  });
+
+  it("never matches the main stage (it is always shown anyway)", () => {
+    expect(findVenueForBooth({ orgName: "体育館ステージ" }, venues)).toBeNull();
+  });
+
+  it("returns null when only the main stage has performances", () => {
+    expect(findVenueForBooth({ orgName: "演劇部" }, ["体育館ステージ"])).toBeNull();
   });
 });
 

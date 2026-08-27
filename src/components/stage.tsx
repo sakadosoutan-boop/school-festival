@@ -176,7 +176,7 @@ const initialStageDensity = (): StageDensity => {
   return (typeof window !== "undefined" && window.innerWidth >= 640) ? "normal" : "compact";
 };
 
-export const StageView = ({ program, tick }: { program: StageProgram; tick: number }) => {
+export const StageView = ({ program, tick, focusVenue }: { program: StageProgram; tick: number; focusVenue?: string | null }) => {
   const dayCount = program?.days || 1;
   // 開催当日は自動でその日のタブを開く(それ以外は1日目)
   const [day, setDay] = useState(() => Math.min(todayFestivalDay() ?? 1, program?.days || 1));
@@ -198,6 +198,8 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
     return [MAIN_STAGE, ...list.filter((v) => v !== MAIN_STAGE)].filter((v) => set.has(v));
   }, [program]);
   const [venue, setVenue] = useState(MAIN_STAGE);
+  // ブースの詳細から「時間割を見る」で来たときは、その会場を開いた状態にする
+  useEffect(() => { if (focusVenue) setVenue(focusVenue); }, [focusVenue]);
   const activeVenue = activeVenues.includes(venue) ? venue : (activeVenues[0] ?? MAIN_STAGE);
 
   const dayItems = useMemo(
@@ -243,16 +245,49 @@ export const StageView = ({ program, tick }: { program: StageProgram; tick: numb
     </div>
   ) : null;
 
-  // 会場が2つ以上あるときだけ会場切り替えを表示する
+  // 会場ごとの「その日の公演数」と「いま上演中か」。会場選びの手がかりとして出す
+  const venueInfo = useMemo(() => {
+    const map = new Map<string, { count: number; live: boolean }>();
+    activeVenues.forEach((v) => map.set(v, { count: 0, live: false }));
+    (program?.items || []).forEach((i) => {
+      if ((i.day || 1) !== day) return;
+      const entry = map.get(venueOf(i));
+      if (!entry) return;
+      entry.count += 1;
+      if (itemStatus(i, ref) === "live") entry.live = true;
+    });
+    return map;
+  }, [program, day, activeVenues, ref]);
+
+  // 会場が2つ以上あるときだけ会場切り替えを表示する。
+  // 体育館以外の公演(演劇部・音楽部・放送部)はここからしか辿れないので、
+  // 見出しを付けて「ほかの会場もある」と分かる見た目にしておく。
   const VenueTabs = activeVenues.length > 1 ? (
-    <div className="flex gap-1.5 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 mb-3" role="group" aria-label="会場を選択">
-      {activeVenues.map((v) => (
-        <button key={v} type="button" onClick={() => setVenue(v)} aria-pressed={activeVenue === v}
-          className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-extrabold transition-all active:scale-95 border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-purple-400 ${activeVenue === v ? "text-white shadow-sm border-transparent" : "bg-white text-stone-600 border-stone-200"}`}
-          style={activeVenue === v ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
-          {venueEmoji(v)}{" "}{v}
-        </button>
-      ))}
+    <div className="mb-3">
+      <div className="flex items-baseline gap-1.5 mb-1.5">
+        <span className="text-xs font-black" style={{ color: "var(--ink)" }}>会場を選ぶ</span>
+        <span className="text-[11px] font-bold" style={{ color: "var(--ink-soft)" }}>体育館のほかにも公演があります</span>
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1" role="group" aria-label="会場を選択">
+        {activeVenues.map((v) => {
+          const info = venueInfo.get(v);
+          const on = activeVenue === v;
+          return (
+            <button key={v} type="button" onClick={() => setVenue(v)} aria-pressed={on}
+              aria-label={`${v}。${info?.count ?? 0}公演${info?.live ? "。上演中" : ""}`}
+              className={`flex-shrink-0 px-3 py-2 rounded-2xl text-xs font-extrabold transition-all active:scale-95 border-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-purple-400 ${on ? "text-white shadow-md border-transparent" : "bg-white text-stone-600 border-stone-200"}`}
+              style={on ? { background: "linear-gradient(135deg,#9b5de5,#4cc9f0)" } : {}}>
+              <span className="flex items-center gap-1 whitespace-nowrap">
+                {info?.live && <span className={`w-1.5 h-1.5 rounded-full ${on ? "bg-white" : ""}`} style={on ? {} : { background: THEME.pink }} aria-hidden="true" />}
+                {venueEmoji(v)}{" "}{v}
+              </span>
+              <span className={`block mt-0.5 text-[10px] font-bold ${on ? "text-white/80" : "text-stone-400"}`}>
+                {info?.live ? "上演中" : `${info?.count ?? 0}公演`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   ) : null;
 
