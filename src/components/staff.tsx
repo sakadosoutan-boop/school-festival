@@ -95,10 +95,10 @@ export function rememberBooth(id: string): void {
 
 /* ═══════════ STAFF: BOOTH SELECTOR ═══════════ */
 
-export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCreate, onEdit, onLogout, onOpenSettings, onOpenStage }: {
-  booths: Booth[]; role: StaffRole; pendingCount: number;
+export const StaffBoothSelector = ({ booths, role, pendingCount, noticeCount, onSelect, onCreate, onEdit, onLogout, onOpenSettings, onOpenStage, onOpenNotices }: {
+  booths: Booth[]; role: StaffRole; pendingCount: number; noticeCount: number;
   onSelect: (id: string) => void; onCreate: () => void; onEdit: (id: string) => void;
-  onLogout: () => void; onOpenSettings: () => void; onOpenStage: () => void;
+  onLogout: () => void; onOpenSettings: () => void; onOpenStage: () => void; onOpenNotices: () => void;
 }) => {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<StaffSortKey>("default");
@@ -133,6 +133,19 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
           </div>
         )}
 
+        {/* 落とし物のアナウンスは当日いつでも必要になる。設定の奥ではなく画面上部に置く。
+            一般の生徒は触らないので、目立たない小さめの見た目にしておく。 */}
+        <button onClick={onOpenNotices}
+          className="w-full mb-3 flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-stone-200 bg-white active:scale-[0.99] transition-all text-left">
+          <span className="text-sm leading-none">📌</span>
+          <span className="text-xs font-black text-stone-700">落とし物・お知らせ</span>
+          <span className="text-[10px] font-bold text-stone-400">実行委員用</span>
+          {noticeCount > 0 && (
+            <span className="text-[10px] font-black px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{noticeCount}件掲示中</span>
+          )}
+          <ChevronRight size={14} className="text-stone-300 ml-auto flex-shrink-0" strokeWidth={3} />
+        </button>
+
         <button onClick={onOpenStage}
           className="w-full mb-3 flex items-center gap-3 p-4 rounded-2xl active:scale-[0.99] transition-all text-left text-white shadow-md"
           style={{ background: "linear-gradient(120deg,#9b5de5,#4cc9f0)" }}>
@@ -151,19 +164,11 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
           </div>
         </div>
 
-        <button onClick={onCreate}
-          className="w-full mb-3 flex items-center gap-3 p-4 bg-white rounded-2xl border-2 border-dashed border-stone-300 hover:border-stone-900 hover:bg-stone-50 active:scale-[0.99] transition-all text-left">
-          <div className="w-12 h-12 rounded-xl bg-stone-100 flex items-center justify-center flex-shrink-0">
-            <Plus size={22} className="text-stone-700" strokeWidth={2.5} />
-          </div>
-          <div className="flex-1"><div className="font-bold text-stone-900">新しいブースを追加</div><div className="text-xs text-stone-500">名前・場所・運営団体を登録</div></div>
-        </button>
-
         {booths.length === 0 ? (
           <div className="text-center py-12 text-stone-400">
             <div className="text-4xl mb-2">🎪</div>
             <div className="font-bold text-stone-600">まだブースがありません</div>
-            <div className="text-sm mt-1">上のボタンから追加してください</div>
+            <div className="text-sm mt-1">下の「新しいブースを追加」から登録してください</div>
           </div>
         ) : (
           <>
@@ -208,6 +213,15 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
             </div>
           </>
         )}
+
+        {/* 当日はほとんど使わないので、一覧の下に置いて誤タップを避ける */}
+        <button onClick={onCreate}
+          className="w-full mt-6 flex items-center gap-3 px-3 py-2.5 bg-white rounded-xl border border-dashed border-stone-300 hover:border-stone-900 active:scale-[0.99] transition-all text-left">
+          <div className="w-8 h-8 rounded-lg bg-stone-100 flex items-center justify-center flex-shrink-0">
+            <Plus size={16} className="text-stone-600" strokeWidth={2.5} />
+          </div>
+          <div className="flex-1"><div className="text-xs font-bold text-stone-700">新しいブースを追加</div><div className="text-[10px] text-stone-400">名前・場所・運営団体を登録</div></div>
+        </button>
       </div>
     </div>
   );
@@ -805,7 +819,7 @@ export const CalculatorSheet = ({ booth, onClose, onApply }: { booth: Booth; onC
 
 /* ═══════════ SETTINGS ═══════════ */
 
-export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, notices, onSaveNotices, showToast }: {
+export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, notices, onOpenNotices, showToast }: {
   role: StaffRole;
   booths: Booth[];
   stage?: StageProgram | null;
@@ -821,14 +835,12 @@ export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onCl
   onOpenSnapshots: () => void;
   onBulkOpen: (open: boolean) => void;
   notices: FestivalNotice[];
-  onSaveNotices: (notices: FestivalNotice[]) => void;
+  onOpenNotices: () => void;
   showToast: (message: string, type?: "success" | "error" | "info" | "warn") => void;
 }) => {
   const [staffPin, setStaffPin] = useState("");
   const [adminPin, setAdminPin] = useState("");
   const [confirmBulk, setConfirmBulk] = useState<boolean | null>(null);
-  const [noticeText, setNoticeText] = useState("");
-  const [noticeKind, setNoticeKind] = useState<FestivalNotice["kind"]>("lost");
   const [notice, setNotice] = useState(emergencyNotice);
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -894,46 +906,12 @@ export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onCl
 
         {/* 落とし物・迷子の掲示板(管理者) */}
         {isAdmin && (
-          <div className="bg-white rounded-2xl p-5 border border-stone-200">
-            <div className="flex items-center gap-2 mb-3"><span className="text-base">📌</span><div className="font-bold text-stone-900">落とし物・迷子の掲示板</div></div>
-            <p className="text-xs text-stone-500 mb-3 leading-relaxed">来場者のホーム画面に一覧表示されます(最大12件・100文字)。解決したら削除してください。</p>
-            <div className="flex gap-1.5 mb-2">
-              {([["lost", "🧳 落とし物"], ["child", "👶 迷子"], ["info", "📢 その他"]] as const).map(([k, label]) => (
-                <button key={k} onClick={() => setNoticeKind(k)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors active:scale-95 ${noticeKind === k ? "bg-stone-900 border-stone-900 text-white" : "bg-white border-stone-200 text-stone-600"}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            <div className="flex gap-2">
-              <input type="text" value={noticeText} maxLength={100} onChange={(e) => setNoticeText(e.target.value)}
-                placeholder={noticeKind === "lost" ? "例: 黒い水筒をかえる広場で保護しています" : noticeKind === "child" ? "例: 青い帽子のお子さんをお預かりしています" : "例: 15時から抽選会をピロティで開催"}
-                className="flex-1 px-4 py-3 rounded-xl border border-stone-200 text-sm bg-white outline-none focus:border-stone-900" />
-              <button
-                onClick={() => {
-                  const text = noticeText.trim();
-                  if (!text) { showToast("内容を入力してください", "error"); return; }
-                  onSaveNotices([{ id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, kind: noticeKind, text, ts: Date.now() }, ...notices].slice(0, 12));
-                  setNoticeText("");
-                }}
-                disabled={busy || !noticeText.trim()}
-                className="px-4 rounded-xl bg-stone-900 text-white font-bold text-sm active:scale-95 disabled:opacity-40">掲示</button>
-            </div>
-            {notices.length > 0 && (
-              <div className="space-y-2 mt-3">
-                {notices.map((n) => (
-                  <div key={n.id} className="flex items-start gap-2 p-2.5 rounded-xl bg-stone-50 border border-stone-200">
-                    <span className="text-base flex-shrink-0">{n.kind === "lost" ? "🧳" : n.kind === "child" ? "👶" : "📢"}</span>
-                    <div className="flex-1 text-sm text-stone-700 leading-snug">{n.text}<span className="text-[10px] text-stone-400 ml-1.5">{formatTime(n.ts)}</span></div>
-                    <button onClick={() => onSaveNotices(notices.filter((x) => x.id !== n.id))} disabled={busy}
-                      className="w-7 h-7 rounded-lg bg-white border border-stone-200 flex items-center justify-center active:scale-90 flex-shrink-0 disabled:opacity-40" aria-label="掲示を削除">
-                      <Trash2 size={13} className="text-stone-400" strokeWidth={2.4} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <button onClick={onOpenNotices}
+            className="w-full bg-white rounded-2xl p-4 border border-stone-200 flex items-center gap-3 active:scale-[0.99] transition-all text-left">
+            <span className="text-lg">📌</span>
+            <div className="flex-1"><div className="font-bold text-stone-900">落とし物・お知らせの掲示</div><div className="text-xs text-stone-500">{notices.length}件掲示中 · スタッフ画面の上部からも開けます</div></div>
+            <ChevronRight size={18} className="text-stone-300" />
+          </button>
         )}
 
         {/* PIN */}
@@ -1021,6 +999,97 @@ export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onCl
         />
       )}
       {dashboardOpen && <AdminDashboardSheet booths={booths} stage={stage} notices={notices} onClose={() => setDashboardOpen(false)} />}
+    </Sheet>
+  );
+};
+
+/* ═══════════ STAFF: 落とし物・お知らせの掲示 ═══════════
+   当日いつでも必要になるので、設定の奥ではなくスタッフ画面の上部から直接開く。
+   掲示・削除はサーバー側でも管理者PIN必須。更新用PINのときは一覧だけ見せる。 */
+const NOTICE_KINDS = [["lost", "🧳 落とし物"], ["child", "👶 迷子"], ["info", "📢 その他"]] as const;
+export const NOTICE_MAX = 30;
+
+export const NoticeBoardSheet = ({ notices, isAdmin, busy, onSave, onClose, showToast }: {
+  notices: FestivalNotice[]; isAdmin: boolean; busy: boolean;
+  onSave: (notices: FestivalNotice[]) => void; onClose: () => void;
+  showToast: (m: string, t?: "success" | "error" | "info" | "warn") => void;
+}) => {
+  const [kind, setKind] = useState<FestivalNotice["kind"]>("lost");
+  const [text, setText] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<FestivalNotice | null>(null);
+
+  const post = () => {
+    const value = text.trim();
+    if (!value) { showToast("内容を入力してください", "error"); return; }
+    onSave([{ id: `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, kind, text: value, ts: Date.now() }, ...notices].slice(0, NOTICE_MAX));
+    setText("");
+  };
+
+  return (
+    <Sheet onClose={onClose} title="落とし物・お知らせ">
+      <div className="px-5 pb-8 pt-1 space-y-4">
+        {isAdmin ? (
+          <div className="bg-white rounded-2xl p-4 border border-stone-200">
+            <div className="font-bold text-stone-900 mb-1">新しく掲示する</div>
+            <p className="text-xs text-stone-500 mb-3 leading-relaxed">来場者のホーム画面に出ます(最大{NOTICE_MAX}件・100文字)。見つかったら削除してください。</p>
+            <div className="flex gap-1.5 mb-2">
+              {NOTICE_KINDS.map(([k, label]) => (
+                <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors active:scale-95 ${kind === k ? "bg-stone-900 border-stone-900 text-white" : "bg-white border-stone-200 text-stone-600"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <textarea value={text} maxLength={100} rows={2} onChange={(e) => setText(e.target.value)}
+              placeholder={kind === "lost" ? "例: 黒い水筒をかえる広場で保護しています" : kind === "child" ? "例: 青い帽子のお子さんをお預かりしています" : "例: 15時から抽選会をピロティで開催"}
+              className="w-full px-4 py-3 rounded-xl border border-stone-200 text-sm bg-white outline-none focus:border-stone-900 resize-none leading-relaxed" />
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-[11px] text-stone-400 flex-1">{text.length}/100</span>
+              <button onClick={post} disabled={busy || !text.trim()}
+                className="px-5 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm active:scale-95 disabled:opacity-40">掲示する</button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+            掲示するには<strong className="font-bold">管理者PIN</strong>でのログインが必要です。実行委員(運営本部)にご連絡ください。
+          </div>
+        )}
+
+        <div>
+          <div className="flex items-baseline gap-1.5 mb-2">
+            <span className="text-sm font-black text-stone-900">掲示中の一覧</span>
+            <span className="text-[11px] font-bold text-stone-400">{notices.length}件 / 最大{NOTICE_MAX}件</span>
+          </div>
+          {notices.length === 0 ? (
+            <div className="text-center text-sm text-stone-400 py-8 bg-white rounded-2xl border border-dashed border-stone-200">
+              いま掲示しているお知らせはありません
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {notices.map((n) => (
+                <div key={n.id} className="flex items-start gap-2 p-3 rounded-xl bg-white border border-stone-200">
+                  <span className="text-base flex-shrink-0">{n.kind === "lost" ? "🧳" : n.kind === "child" ? "👶" : "📢"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-stone-800 leading-snug break-words">{n.text}</div>
+                    <div className="text-[10px] text-stone-400 mt-0.5">{formatTime(n.ts)} 掲示</div>
+                  </div>
+                  {isAdmin && (
+                    <button onClick={() => setConfirmDelete(n)} disabled={busy}
+                      className="w-8 h-8 rounded-lg bg-stone-50 border border-stone-200 flex items-center justify-center active:scale-90 flex-shrink-0 disabled:opacity-40" aria-label="この掲示を削除">
+                      <Trash2 size={14} className="text-stone-400" strokeWidth={2.4} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {confirmDelete && (
+        <Confirm title="掲示を消しますか?" message={`「${confirmDelete.text}」を来場者の画面から消します。`} confirmLabel="消す" danger
+          onConfirm={() => { onSave(notices.filter((x) => x.id !== confirmDelete.id)); setConfirmDelete(null); }}
+          onCancel={() => setConfirmDelete(null)} />
+      )}
     </Sheet>
   );
 };

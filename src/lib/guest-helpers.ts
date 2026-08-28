@@ -150,23 +150,31 @@ const makeCourse = (id: string, emoji: string, title: string, list: Booth[]): Co
  * いまのデータから2〜3本のおすすめコースを自動生成する。
  * 候補が2件未満のコースは出さない(開場前は「今すぐ回れる」が空になるため)。
  */
+/* 文化部の判定。orgType が "club" でも、運動部の招待試合(category:other)や
+   同窓会・PTAのような団体まで入ってしまい「文化部めぐり」にならなかった。
+   作品・体験・上演・お茶を出す企画だけを文化部として拾う。 */
+const CULTURE_CATEGORIES = new Set(["exhibition", "experience", "stage", "food"]);
+export const isCultureClub = (booth: Booth): boolean =>
+  booth.orgType === "club" && CULTURE_CATEGORIES.has(booth.category);
+
 export function buildCourses(booths: Booth[], perCourse = 5): Course[] {
   const usable = booths.filter((b) => b.name);
   const courses: Course[] = [];
+  const add = (id: string, emoji: string, title: string, list: Booth[]) => {
+    const picked = routeOrder(preferOpen(list).slice(0, perCourse));
+    if (picked.length >= 2) courses.push(makeCourse(id, emoji, title, picked));
+  };
 
-  const quick = routeOrder(preferOpen(usable.filter((b) => b.isOpen && !allSoldOut(b) && b.waitMinutes <= 10)).slice(0, perCourse));
-  if (quick.length >= 2) courses.push(makeCourse("quick", "⚡", "今すぐ回れるコース", quick));
+  // 並べた順に採用され、上限で打ち切られる。当日いちばん役に立つものから並べる。
+  add("quick", "⚡", "今すぐ回れるコース", usable.filter((b) => b.isOpen && !allSoldOut(b) && b.waitMinutes <= 10));
+  add("food", "🍡", "腹ごしらえコース", usable.filter((b) => b.category === "food" && !allSoldOut(b)));
+  add("play", "🎯", "遊びつくすコース", usable.filter((b) => b.category === "game" || b.category === "attraction"));
+  add("club", "🎨", "文化部めぐり", usable.filter(isCultureClub));
+  add("kids", "👶", "お子さま連れコース", usable.filter(isKidsFriendly));
+  add("exhibition", "🖼️", "作品をじっくり見るコース", usable.filter((b) => b.category === "exhibition"));
+  add("class", "🏫", "クラス企画めぐり", usable.filter((b) => b.orgType === "class"));
 
-  const club = routeOrder(preferOpen(usable.filter((b) => b.orgType === "club")).slice(0, perCourse));
-  if (club.length >= 2) courses.push(makeCourse("club", "🎨", "文化部めぐり", club));
-
-  const food = routeOrder(preferOpen(usable.filter((b) => b.category === "food" && !allSoldOut(b))).slice(0, perCourse));
-  if (food.length >= 2) courses.push(makeCourse("food", "🍡", "腹ごしらえコース", food));
-
-  const kids = routeOrder(preferOpen(usable.filter(isKidsFriendly)).slice(0, perCourse));
-  if (kids.length >= 2) courses.push(makeCourse("kids", "👶", "お子さま連れコース", kids));
-
-  return courses.slice(0, 3);
+  return courses.slice(0, 5);
 }
 
 /* ═══════════ 検索の言い換え ═══════════

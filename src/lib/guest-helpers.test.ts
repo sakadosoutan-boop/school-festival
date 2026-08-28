@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fallbackDescription } from "./guest-helpers";
-import { makeBooth } from "./festival";
+import { buildCourses, fallbackDescription, isCultureClub } from "./guest-helpers";
+import { makeBooth, seedBooths } from "./festival";
 
 describe("fallbackDescription", () => {
   it("builds a sentence from organizer, category and location", () => {
@@ -40,5 +40,37 @@ describe("fallbackDescription", () => {
   it("never invents a category label for その他", () => {
     const booth = makeBooth({ name: "展示", category: "other", orgType: "club", orgName: "写真部" }, "b4");
     expect(fallbackDescription(booth)).toContain("写真部の企画です");
+  });
+});
+
+describe("buildCourses", () => {
+  const all = seedBooths();
+
+  it("keeps 文化部めぐり to actual culture clubs", () => {
+    const club = buildCourses(all).find((c) => c.id === "club");
+    expect(club).toBeDefined();
+    const names = club!.booths.map((b) => b.orgName);
+    // 運動部の招待試合・同窓会・PTAは文化部ではないので入らない
+    expect(names).not.toContain("野球部");
+    expect(names).not.toContain("ハンドボール部");
+    expect(names).not.toContain("同窓会");
+    expect(names).not.toContain("PTA・後援会");
+    expect(club!.booths.every(isCultureClub)).toBe(true);
+  });
+
+  it("offers up to five courses", () => {
+    const courses = buildCourses(all);
+    expect(courses.length).toBeGreaterThanOrEqual(4);
+    expect(courses.length).toBeLessThanOrEqual(5);
+    expect(new Set(courses.map((c) => c.id)).size).toBe(courses.length);
+  });
+
+  it("gives every course at least two stops", () => {
+    expect(buildCourses(all).every((c) => c.booths.length >= 2)).toBe(true);
+  });
+
+  it("drops courses that have nothing to visit", () => {
+    // 開場前は誰も営業していないので「今すぐ回れる」は出ない
+    expect(buildCourses(all).some((c) => c.id === "quick")).toBe(false);
   });
 });
