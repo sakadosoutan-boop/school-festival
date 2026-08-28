@@ -3,7 +3,7 @@ import {
   ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, classOrderRank, daysUntilFestival, findVenueForBooth, formatLocation, isSoldOut,
   itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_PERFORMERS, MAX_WAIT_MINUTES, minToHHMM, normRoom,
   PERFORMER_DESC_MAX, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, sanitizeStage,
-  seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, summarizeBooths, toMin,
+  seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, staleThresholds, summarizeBooths, toMin,
   todayFestivalDay, undoSecondsLeft, venueEmoji,
 } from "./festival";
 import type { Booth } from "../types";
@@ -468,5 +468,26 @@ describe("classOrderRank", () => {
     ];
     const sorted = [...list].sort((a, b) => classOrderRank(a) - classOrderRank(b));
     expect(sorted.map(classOrderRank)).toEqual([101, 204, 309, 100_000]);
+  });
+});
+
+describe("staleThresholds", () => {
+  const at = (iso: string) => new Date(iso).getTime();
+
+  it("tightens the thresholds on the festival days", () => {
+    expect(staleThresholds(at("2026-08-29T12:00:00+09:00"))).toEqual({ stale: 6, veryStale: 20 });
+    expect(staleThresholds(at("2026-08-30T12:00:00+09:00"))).toEqual({ stale: 6, veryStale: 20 });
+  });
+
+  it("keeps the relaxed thresholds while preparing", () => {
+    expect(staleThresholds(at("2026-08-25T12:00:00+09:00"))).toEqual({ stale: 12, veryStale: 30 });
+    expect(staleThresholds(at("2026-09-01T12:00:00+09:00"))).toEqual({ stale: 12, veryStale: 30 });
+  });
+
+  it("is always stricter on the day than while preparing", () => {
+    const day = staleThresholds(at("2026-08-29T12:00:00+09:00"));
+    const prep = staleThresholds(at("2026-08-25T12:00:00+09:00"));
+    expect(day.stale).toBeLessThan(prep.stale);
+    expect(day.veryStale).toBeLessThan(prep.veryStale);
   });
 });

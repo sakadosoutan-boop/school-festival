@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Eye, HelpCircle, LayoutGrid, List, Map as MapIcon, Megaphone, Monitor, Moon, Music, RefreshCw, ShieldCheck, Star, Sun, Type, WifiOff } from "lucide-react";
 import {
   allSoldOut, avgCycle, BUILDINGS, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
-  classOrderRank, findVenueForBooth, MAIN_STAGE, ORG_TYPES, sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME,
+  classOrderRank, findVenueForBooth, MAIN_STAGE, ORG_TYPES, sanitizeStage, seedBooths, seedStage, staleThresholds, stageNowNext, THEME,
   todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
@@ -1143,7 +1143,7 @@ function AppInner(): React.JSX.Element {
                   : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます"
                   : "検索語やカテゴリを変えてお試しください"} />
             )}
-            <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · 最終同期 {syncLabel} · {STALE_MINUTES}分以上更新がないと「情報が古い」と表示されます</div>
+            <div className="text-center text-[11px] text-stone-400 mt-6 font-medium">⏱ 自動更新 · 最終同期 {syncLabel} · {staleThresholds().stale}分以上更新がないと「情報が古い」と表示されます</div>
           </main>
         </>
       )}

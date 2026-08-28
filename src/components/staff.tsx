@@ -10,7 +10,7 @@ import {
   ALLERGENS, allSoldOut, APP_NAME, avgCycle, BUILDINGS, calcWait, CATEGORIES, CLASS_NUMS, EMOJI_PALETTE, FLOORS,
   formatCycle, formatLocation, formatOrganizer, formatRelative, formatTime, freshness, getStatus, GRADES, isSoldOut,
   makeBooth, matchesBoothQuery, minutesSince, NAG_MINUTES, ORG_TYPES, serveBlockedReason, sortBoothsForStaff,
-  STALE_MINUTES, summarizeBooths, THEME, undoSecondsLeft,
+  staleThresholds, summarizeBooths, THEME, undoSecondsLeft,
 } from "../lib/festival";
 import type { StaffSortKey } from "../lib/festival";
 import { backendConfigured, DEMO_ADMIN_PIN, DEMO_STAFF_PIN } from "../lib/api";
@@ -73,6 +73,26 @@ export const StaffLogin = ({ onSubmit, onBack, busy }: { onSubmit: (pin: string)
   );
 };
 
+// 直接入力でこれを超えたら確認を挟む(実際の列でこれ以上並ぶことはまれ)
+const CONFIRM_LINE_OVER = 60;
+
+/* 当日は自分の企画を何度も開くので、最後に「運用する」を押した企画を端末に覚える。
+   保存先はこの端末のlocalStorageだけで、サーバーには送らない。 */
+const RECENT_KEY = "machitime:v6:recent-booths";
+const RECENT_MAX = 3;
+export function recentBoothIds(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string").slice(0, RECENT_MAX) : [];
+  } catch { return []; }
+}
+export function rememberBooth(id: string): void {
+  try {
+    const next = [id, ...recentBoothIds().filter((v) => v !== id)].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch { /* プライベートモード等では覚えられないが、動作は続く */ }
+}
+
 /* ═══════════ STAFF: BOOTH SELECTOR ═══════════ */
 
 export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCreate, onEdit, onLogout, onOpenSettings, onOpenStage }: {
@@ -82,9 +102,14 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
 }) => {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<StaffSortKey>("default");
+  const recent = recentBoothIds();
 
   // 検索(名前・クラス・部屋番号)→並び替えの順で適用。43団体からの絞り込みを速くする。
-  const visibleBooths = sortBoothsForStaff(booths.filter((b) => matchesBoothQuery(b, query)), sortKey);
+  const sorted = sortBoothsForStaff(booths.filter((b) => matchesBoothQuery(b, query)), sortKey);
+  /* 当日は自分の企画を何度も開く。前に「運用する」を押した企画を先頭に固定して、
+     43件から毎回探さなくて済むようにする(検索・並び替え中は邪魔なので出さない)。 */
+  const pinned = query || sortKey !== "default" ? [] : sorted.filter((b) => recent.includes(b.id));
+  const visibleBooths = pinned.length ? sorted.filter((b) => !recent.includes(b.id)) : sorted;
   const staleOpenCount = booths.filter((b) => b.isOpen && freshness(b) !== "fresh").length;
 
   return (
@@ -168,8 +193,26 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
               </div>
             )}
 
+            {pinned.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className="text-xs font-black text-stone-700">よく使う企画</span>
+                  <span className="text-[11px] font-bold text-stone-400">前に運用した企画をここに出しています</span>
+                </div>
+                <div className="grid grid-cols-1 gap-3">{pinned.map(renderBooth)}</div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 gap-3">
-              {visibleBooths.map((b) => {
+              {visibleBooths.map(renderBooth)}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  function renderBooth(b: Booth) {
                 const status = getStatus(b.waitMinutes, b.isOpen);
                 return (
                   <div key={b.id} className="bg-white rounded-2xl border border-stone-200 overflow-hidden">
@@ -188,7 +231,7 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-px bg-stone-200 border-t border-stone-200">
-                      <button onClick={() => onSelect(b.id)} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
+                      <button onClick={() => { rememberBooth(b.id); onSelect(b.id); }} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
                         <CheckCircle2 size={16} className="text-emerald-600" strokeWidth={2.4} /><span className="text-sm font-bold text-stone-900">運用する</span>
                       </button>
                       <button onClick={() => onEdit(b.id)} className="bg-white hover:bg-stone-50 active:bg-stone-100 py-3 flex items-center justify-center gap-1.5 transition-colors">
@@ -197,13 +240,7 @@ export const StaffBoothSelector = ({ booths, role, pendingCount, onSelect, onCre
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
+  }
 };
 
 /* ═══════════ STAFF: BOOTH EDITOR ═══════════ */
@@ -406,6 +443,8 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
   const [pulse, setPulse] = useState(false);
   // 閉店は来場者の画面から待ち時間が消える操作なので、誤タップ防止に確認を挟む
   const [confirmClose, setConfirmClose] = useState(false);
+  // 直接入力で極端な人数が入ったときの確認待ち(nullなら確認不要)
+  const [pendingLine, setPendingLine] = useState<number | null>(null);
   const [newProdName, setNewProdName] = useState("");
   const [newProdStock, setNewProdStock] = useState("20");
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -440,6 +479,12 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
   const setLine = (n: number) => {
     const v = Math.max(0, Math.min(500, n));
     onUpdate({ peopleInLine: v, waitMinutes: calcWait(v, booth.capacity, learnedCycle) });
+  };
+  /* 直接入力は桁を間違えやすい(30を300など)。極端な人数のときだけ確認を挟む。
+     ＋−とクイックボタンは1タップで戻せるので確認しない。 */
+  const requestSetLine = (n: number) => {
+    const v = Math.max(0, Math.min(500, n));
+    if (v > CONFIRM_LINE_OVER) setPendingLine(v); else setLine(v);
   };
 
   const markServed = () => {
@@ -548,7 +593,7 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
             <button onClick={() => adjustLine(-1)} disabled={booth.peopleInLine <= 0} className="w-12 h-12 rounded-2xl bg-stone-100 flex items-center justify-center active:scale-95 disabled:opacity-40" aria-label="1人減らす"><Minus size={20} strokeWidth={3} className="text-stone-700" /></button>
             <div className="flex-1 text-center">
               <input type="number" inputMode="numeric" value={booth.peopleInLine} min={0} max={500}
-                onChange={(e) => setLine(parseInt(e.target.value || "0", 10) || 0)}
+                onChange={(e) => requestSetLine(parseInt(e.target.value || "0", 10) || 0)}
                 className="w-full text-4xl font-black text-stone-900 tabular-nums text-center bg-transparent border-0 outline-none focus:bg-stone-50 rounded-xl py-1" />
               <span className="text-xs font-bold text-stone-500 block mt-0.5">人 (タップで直接入力)</span>
             </div>
@@ -667,6 +712,15 @@ export const StaffBoothPanel = ({ booth, onUpdate, onBack, onOpenCalculator, onE
         )}
       </div>
 
+      {pendingLine !== null && (
+        <Confirm
+          title="この人数で合っていますか?"
+          message={`列に ${pendingLine}人 と入力されました。待ち時間は約${calcWait(pendingLine, booth.capacity, learnedCycle)}分と表示されます。桁の入力ミスでなければ「この人数にする」を押してください。`}
+          confirmLabel="この人数にする"
+          onConfirm={() => { setLine(pendingLine); setPendingLine(null); }}
+          onCancel={() => setPendingLine(null)}
+        />
+      )}
       {confirmClose && (
         <Confirm
           title="閉店しますか?"
@@ -1066,7 +1120,7 @@ export const AdminDashboardSheet = ({ booths, stage, notices, onClose }: { booth
 
         <div className="bg-white rounded-2xl p-4 border border-stone-200">
           <div className="font-bold text-stone-900 mb-1 flex items-center gap-1.5"><BellRing size={15} className="text-amber-600" strokeWidth={2.4} /> 更新が止まっているブース</div>
-          <p className="text-[11px] text-stone-400 mb-2.5 leading-relaxed">営業中なのに{STALE_MINUTES}分以上更新がありません。担当者に連絡してください。</p>
+          <p className="text-[11px] text-stone-400 mb-2.5 leading-relaxed">営業中なのに{staleThresholds().stale}分以上更新がありません。担当者に連絡してください。</p>
           {summary.staleBooths.length === 0 ? (
             <div className="text-xs text-stone-400 py-4 text-center">すべて最新の状態です</div>
           ) : (

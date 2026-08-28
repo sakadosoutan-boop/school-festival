@@ -89,3 +89,28 @@ export function usePwaInstall(): {
     requestInstall,
   };
 }
+
+/**
+ * アプリを確実に最新版へ入れ替える。
+ * 通常はService Workerが自動で更新するが、当日の朝に全端末を確実に揃えたいときや、
+ * 古い版が残って表示が直らないときの最後の手段として使う。
+ *
+ * 消すのはService Workerのキャッシュ(配信ファイル)と、サーバーから取り直せる
+ * 表示用キャッシュだけ。お気に入り・スタンプ・テーマなどの端末内の記録は残す。
+ */
+export async function forceUpdate(): Promise<void> {
+  try {
+    localStorage.removeItem("machitime:v6:cache");
+  } catch { /* 消せなくても読み込み直しは続行する */ }
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((r) => r.unregister()));
+    }
+  } catch { /* 権限やプライベートモードで失敗しても、下の再読み込みは行う */ }
+  window.location.reload();
+}

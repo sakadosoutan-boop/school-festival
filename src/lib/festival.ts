@@ -156,10 +156,22 @@ export const avgCycle = (history: number[] | undefined, fallback: number): numbe
 
 export const minutesSince = (ts: number | null | undefined): number => (ts ? (Date.now() - ts) / 60000 : Infinity);
 
+/* ── 情報の鮮度 ──
+   準備期間は数十分に一度しか触らないので12分/30分でよいが、当日のピークでは
+   12分前の待ち時間はもう古い。開催日だけしきい値を縮める。 */
+export const FESTIVAL_STALE_MINUTES = 6;
+export const FESTIVAL_VERY_STALE_MINUTES = 20;
+
+export const staleThresholds = (now: number = Date.now()): { stale: number; veryStale: number } =>
+  todayFestivalDay(now) != null
+    ? { stale: FESTIVAL_STALE_MINUTES, veryStale: FESTIVAL_VERY_STALE_MINUTES }
+    : { stale: STALE_MINUTES, veryStale: VERY_STALE_MINUTES };
+
 export const freshness = (booth: Booth): "fresh" | "stale" | "very_stale" => {
   const m = minutesSince(booth.lastUpdated);
-  if (m >= VERY_STALE_MINUTES) return "very_stale";
-  if (m >= STALE_MINUTES) return "stale";
+  const { stale, veryStale } = staleThresholds();
+  if (m >= veryStale) return "very_stale";
+  if (m >= stale) return "stale";
   return "fresh";
 };
 
@@ -529,7 +541,7 @@ export const summarizeBooths = (booths: Booth[], now = Date.now()): BoothDashboa
     .sort((a, b) => b.waitMinutes - a.waitMinutes)
     .slice(0, 5);
   const staleBooths = openBooths
-    .filter((b) => (now - b.lastUpdated) / 60_000 >= STALE_MINUTES)
+    .filter((b) => (now - b.lastUpdated) / 60_000 >= staleThresholds(now).stale)
     .sort((a, b) => a.lastUpdated - b.lastUpdated);
   const soldOutBooths = booths.filter((b) => (b.products || []).some(isSoldOut));
   const fullySoldOutCount = booths.filter((b) => allSoldOut(b)).length;
