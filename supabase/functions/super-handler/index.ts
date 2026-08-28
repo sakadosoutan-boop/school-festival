@@ -583,10 +583,11 @@ Deno.serve(async (request) => {
 
       if (hasNotices) {
         // 落とし物・迷子の掲示板。件数・文字数・種別をサーバー側でも制限する。
+        // 落とし物は当日ぶん累積するので、上限は余裕をみて30件。
         const KINDS = new Set(["lost", "child", "info"]);
         const notices = (patch.notices as unknown[])
           .filter((n): n is Record<string, unknown> => !!n && typeof n === "object")
-          .slice(0, 12)
+          .slice(0, 30)
           .map((n) => ({
             id: ID_RE.test(str(n.id, 64)) ? str(n.id, 64) : `n_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             kind: KINDS.has(str(n.kind, 8)) ? str(n.kind, 8) : "info",

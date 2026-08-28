@@ -21,7 +21,7 @@ import { CourseSuggestions } from "./components/courses";
 import { StampRallyCard, useStampRally } from "./components/rally";
 import { Confetti, rallyRank } from "./components/celebrate";
 import { InstallAppCard, InstallInstructionsSheet } from "./components/install";
-import { CalculatorSheet, EditBoothSheet, SettingsSheet, SnapshotSheet, StaffBoothPanel, StaffBoothSelector, StaffLogin } from "./components/staff";
+import { CalculatorSheet, EditBoothSheet, NoticeBoardSheet, SettingsSheet, SnapshotSheet, StaffBoothPanel, StaffBoothSelector, StaffLogin } from "./components/staff";
 import { StageEditor, StageView } from "./components/stage";
 import { MapView } from "./components/map";
 import logoSrc from "./assets/logo.png";
@@ -161,6 +161,8 @@ function AppInner(): React.JSX.Element {
   const [helpOpen, setHelpOpen] = useState(false);
   // おたのしみのシート。null=閉じている
   const [funSheet, setFunSheet] = useState<"rally" | "courses" | null>(null);
+  // 落とし物・お知らせの掲示(スタッフ画面の上部から開く)
+  const [noticesOpen, setNoticesOpen] = useState(false);
   // ブースの詳細から開いたステージ会場(ステージタブでその会場を選んだ状態にする)
   const [stageFocusVenue, setStageFocusVenue] = useState<string | null>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
@@ -784,6 +786,16 @@ function AppInner(): React.JSX.Element {
       {calcOpen && staffBooth && <CalculatorSheet booth={staffBooth} onClose={() => setCalcOpen(false)} onApply={(u) => { updateBooth(staffBooth.id, u); setCalcOpen(false); showToast(`待ち時間を ${u.waitMinutes}分 に更新しました`); }} />}
       {(editingId || creating) && <EditBoothSheet booth={creating ? null : booths.find((b) => b.id === editingId) ?? null} isNew={creating} onClose={() => { setEditingId(null); setCreating(false); }} onSave={handleSaveBooth} onDelete={() => { if (editingId) void handleDeleteBooth(editingId); }} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
+      {noticesOpen && (
+        <NoticeBoardSheet
+          notices={settings.notices ?? []}
+          isAdmin={staffRole === "admin"}
+          busy={busy}
+          onSave={(next) => void saveNotices(next)}
+          onClose={() => setNoticesOpen(false)}
+          showToast={showToast}
+        />
+      )}
       {funSheet === "rally" && (
         <Sheet onClose={() => setFunSheet(null)} title="スタンプラリー">
           <div className="px-5 pb-8 pt-1">
@@ -824,7 +836,7 @@ function AppInner(): React.JSX.Element {
           onOpenSnapshots={() => void handleOpenSnapshots()}
           onBulkOpen={bulkOpen}
           notices={settings.notices ?? []}
-          onSaveNotices={(n) => void saveNotices(n)}
+          onOpenNotices={() => setNoticesOpen(true)}
           showToast={showToast}
         />
       )}
@@ -1158,6 +1170,8 @@ function AppInner(): React.JSX.Element {
               booths={booths}
               role={staffRole ?? "staff"}
               pendingCount={pendingCount}
+              noticeCount={(settings.notices ?? []).length}
+              onOpenNotices={() => setNoticesOpen(true)}
               onSelect={setStaffBoothId}
               onCreate={() => setCreating(true)}
               onEdit={setEditingId}
