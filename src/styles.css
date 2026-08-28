@@ -220,3 +220,41 @@ html.dark header .bg-white { background-color: #fff !important; }
 @media (prefers-reduced-motion: reduce) {
   .anim-stamp-press, .anim-confetti, .anim-badge-shine { animation: none !important; }
 }
+
+/* ═══════════ 屋外モード ═══════════
+   8月末の日中、直射日光の下ではコントラストが足りず画面が読めなくなる。
+   本文側だけ「白地に黒・枠線を濃く・文字を太く」へ倒す。
+   ヘッダーはグラデーション地に白文字で元からコントラストが高いので触らない
+   (触ると白地に白文字になってボタンが消える)。夜間モードとは排他。 */
+html.outdoor {
+  --surface: #ffffff;
+  --ink: #000000;
+  --ink-soft: #3a3a3a;
+  --line: #767676;
+  --page-a: #ffffff;
+  --page-b: #ffffff;
+}
+html.outdoor body,
+html.outdoor .min-h-screen { background: #ffffff !important; }
+
+/* 本文の文字を一段濃く・太くする(ヘッダーと固定ナビは対象外) */
+html.outdoor main .text-stone-400,
+html.outdoor main .text-stone-500,
+html.outdoor main .text-stone-600,
+html.outdoor [role="dialog"] .text-stone-400,
+html.outdoor [role="dialog"] .text-stone-500,
+html.outdoor [role="dialog"] .text-stone-600 { color: #3a3a3a !important; }
+html.outdoor main .text-stone-700,
+html.outdoor main .text-stone-900,
+html.outdoor [role="dialog"] .text-stone-700,
+html.outdoor [role="dialog"] .text-stone-900 { color: #000000 !important; }
+html.outdoor main { font-weight: 600; }
+
+/* 白飛びで境目が消えるため、カードの枠を見えるようにする */
+html.outdoor main article,
+html.outdoor main section,
+html.outdoor [role="dialog"] > div { border-color: #767676 !important; }
+html.outdoor main article { box-shadow: 0 2px 0 #00000022 !important; }
+
+/* 待ち時間の数字は屋外でいちばん見たい情報。さらに太く */
+html.outdoor main .tabular-nums { font-weight: 900 !important; }

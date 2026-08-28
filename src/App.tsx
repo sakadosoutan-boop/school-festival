@@ -376,16 +376,35 @@ function AppInner(): React.JSX.Element {
   }, [mapFocusId]);
   useEffect(() => { if (view !== "map") setMapFocusId(null); }, [view]);
 
-  /* ── ヘッダーの折りたたみ。しきい値に幅を持たせ、境界でのちらつきを防ぐ ── */
+  /* ── ヘッダーの折りたたみ ──
+     畳むと本文が最大240px縮む。縮んだぶんスクロール位置がブラウザに押し戻されるため、
+     素直にしきい値だけで判定すると「畳む→伸びる→畳む」を往復し続ける(短い一覧で発生)。
+     ・畳むのは、縮めてもスクロール余地が残るページだけに限る
+     ・切り替え直後はアニメーションが終わるまで再判定しない
+     の2点で止める。しきい値の幅(24/80)は境界でのちらつき防止。 */
   useEffect(() => {
     if (view !== "home") { setHeaderCompact(false); return; }
-    const onScroll = () => {
+    let raf = 0;
+    let lockUntil = 0;
+    const evaluate = () => {
+      raf = 0;
+      if (performance.now() < lockUntil) return;
       const y = window.scrollY;
-      setHeaderCompact((prev) => (prev ? y > 24 : y > 80));
+      const room = document.documentElement.scrollHeight - window.innerHeight;
+      setHeaderCompact((prev) => {
+        // 畳んだあとにスクロールが戻りきってしまう短いページでは畳まない
+        const next = prev ? y > 24 : (y > 80 && room > 320);
+        if (next !== prev) lockUntil = performance.now() + 360;
+        return next;
+      });
     };
-    onScroll();
+    const onScroll = () => { if (!raf) raf = window.requestAnimationFrame(evaluate); };
+    evaluate();
     window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+    };
   }, [view]);
 
   /* ── ブース書込: ローカル即時反映 + リモートへ送信(通信断は自動保留) ── */
@@ -758,6 +777,7 @@ function AppInner(): React.JSX.Element {
         <SettingsSheet
           role={staffRole}
           booths={booths}
+          stage={stage}
           emergencyNotice={settings.emergencyNotice}
           busy={busy}
           onClose={() => setSettingsOpen(false)}
