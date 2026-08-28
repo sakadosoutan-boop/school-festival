@@ -909,7 +909,7 @@ export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onCl
           <button onClick={onOpenNotices}
             className="w-full bg-white rounded-2xl p-4 border border-stone-200 flex items-center gap-3 active:scale-[0.99] transition-all text-left">
             <span className="text-lg">📌</span>
-            <div className="flex-1"><div className="font-bold text-stone-900">落とし物・お知らせの掲示</div><div className="text-xs text-stone-500">{notices.length}件掲示中 · スタッフ画面の上部からも開けます</div></div>
+            <div className="flex-1"><div className="font-bold text-stone-900">落とし物・お知らせの掲示</div><div className="text-xs text-stone-500">{notices.length}件掲示中 · 更新用PINでも掲示できます</div></div>
             <ChevronRight size={18} className="text-stone-300" />
           </button>
         )}
@@ -1009,8 +1009,8 @@ export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onCl
 const NOTICE_KINDS = [["lost", "🧳 落とし物"], ["child", "👶 迷子"], ["info", "📢 その他"]] as const;
 export const NOTICE_MAX = 30;
 
-export const NoticeBoardSheet = ({ notices, isAdmin, busy, onSave, onClose, showToast }: {
-  notices: FestivalNotice[]; isAdmin: boolean; busy: boolean;
+export const NoticeBoardSheet = ({ notices, busy, onSave, onClose, showToast }: {
+  notices: FestivalNotice[]; busy: boolean;
   onSave: (notices: FestivalNotice[]) => void; onClose: () => void;
   showToast: (m: string, t?: "success" | "error" | "info" | "warn") => void;
 }) => {
@@ -1028,8 +1028,7 @@ export const NoticeBoardSheet = ({ notices, isAdmin, busy, onSave, onClose, show
   return (
     <Sheet onClose={onClose} title="落とし物・お知らせ">
       <div className="px-5 pb-8 pt-1 space-y-4">
-        {isAdmin ? (
-          <div className="bg-white rounded-2xl p-4 border border-stone-200">
+        <div className="bg-white rounded-2xl p-4 border border-stone-200">
             <div className="font-bold text-stone-900 mb-1">新しく掲示する</div>
             <p className="text-xs text-stone-500 mb-3 leading-relaxed">来場者のホーム画面に出ます(最大{NOTICE_MAX}件・100文字)。見つかったら削除してください。</p>
             <div className="flex gap-1.5 mb-2">
@@ -1047,13 +1046,8 @@ export const NoticeBoardSheet = ({ notices, isAdmin, busy, onSave, onClose, show
               <span className="text-[11px] text-stone-400 flex-1">{text.length}/100</span>
               <button onClick={post} disabled={busy || !text.trim()}
                 className="px-5 py-2.5 rounded-xl bg-stone-900 text-white font-bold text-sm active:scale-95 disabled:opacity-40">掲示する</button>
-            </div>
           </div>
-        ) : (
-          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
-            掲示するには<strong className="font-bold">管理者PIN</strong>でのログインが必要です。実行委員(運営本部)にご連絡ください。
-          </div>
-        )}
+        </div>
 
         <div>
           <div className="flex items-baseline gap-1.5 mb-2">
@@ -1073,12 +1067,10 @@ export const NoticeBoardSheet = ({ notices, isAdmin, busy, onSave, onClose, show
                     <div className="text-sm text-stone-800 leading-snug break-words">{n.text}</div>
                     <div className="text-[10px] text-stone-400 mt-0.5">{formatTime(n.ts)} 掲示</div>
                   </div>
-                  {isAdmin && (
-                    <button onClick={() => setConfirmDelete(n)} disabled={busy}
-                      className="w-8 h-8 rounded-lg bg-stone-50 border border-stone-200 flex items-center justify-center active:scale-90 flex-shrink-0 disabled:opacity-40" aria-label="この掲示を削除">
-                      <Trash2 size={14} className="text-stone-400" strokeWidth={2.4} />
-                    </button>
-                  )}
+                  <button onClick={() => setConfirmDelete(n)} disabled={busy}
+                    className="w-8 h-8 rounded-lg bg-stone-50 border border-stone-200 flex items-center justify-center active:scale-90 flex-shrink-0 disabled:opacity-40" aria-label="この掲示を削除">
+                    <Trash2 size={14} className="text-stone-400" strokeWidth={2.4} />
+                  </button>
                 </div>
               ))}
             </div>

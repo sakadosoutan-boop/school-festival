@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Eye, HelpCircle, LayoutGrid, List, Map as MapIcon, Megaphone, Monitor, Moon, Music, RefreshCw, ShieldCheck, Star, Sun, Type, WifiOff } from "lucide-react";
 import {
   allSoldOut, avgCycle, BUILDINGS, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
-  classOrderRank, findVenueForBooth, MAIN_STAGE, ORG_TYPES, sanitizeStage, seedBooths, seedStage, staleThresholds, stageNowNext, THEME,
+  classOrderRank, findVenueForBooth, freshness, MAIN_STAGE, ORG_TYPES, sanitizeStage, seedBooths, seedStage, staleThresholds, stageNowNext, THEME,
   todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
@@ -11,7 +11,7 @@ import {
   saveStage as apiSaveStage, updateSettings, verifyPin,
 } from "./lib/api";
 import { normalizeForSearch } from "./lib/text";
-import { boothSearchText, buildCourses, closingNotice, isDensity, isKidsFriendly } from "./lib/guest-helpers";
+import { boothSearchText, buildCourses, closingNotice, festivalFinished, isDensity, isKidsFriendly } from "./lib/guest-helpers";
 import type { Density } from "./lib/guest-helpers";
 import type { Booth, FestivalNotice, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
 import { EmptyState, Sheet, SkipLink, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll, useTextScale, useTheme } from "./components/ui";
@@ -745,9 +745,20 @@ function AppInner(): React.JSX.Element {
   }, [festivalDay, stage, tick]);
 
   const openBooths = booths.filter((b) => b.isOpen);
-  const avgWait = openBooths.length === 0 ? 0 : Math.round(openBooths.reduce((s, b) => s + b.waitMinutes, 0) / openBooths.length);
+  /* 統計は「いま本当に行ける企画」だけで数える。
+     ・更新が止まっている企画(very_stale)は、待ち時間があてにならないので平均から外す
+     ・完売した企画は営業中でも行っても買えないので、別に数える
+     これをしないと「営業中43件・平均16分」と出たまま、行ったら閉まっている/売り切れ、
+     という当日いちばん多いクレームにつながる。 */
+  const liveBooths = openBooths.filter((b) => freshness(b) !== "very_stale");
+  const soldOutCount = openBooths.filter(allSoldOut).length;
+  const staleCount = openBooths.length - liveBooths.length;
+  const avgWait = liveBooths.length === 0 ? 0 : Math.round(liveBooths.reduce((s, b) => s + b.waitMinutes, 0) / liveBooths.length);
   // 「いま並ばずに入れる企画」の数。開催中にいちばん役に立つ指標。
-  const readyNow = openBooths.filter((b) => b.waitMinutes <= 5 && !allSoldOut(b)).length;
+  const readyNow = liveBooths.filter((b) => b.waitMinutes <= 5 && !allSoldOut(b)).length;
+  // 16:00をすぎた後や開催日以外は、営業中のまま残っている表示を信じさせない
+  // (15:30の入場終了時点ではまだ中の企画は営業しているので、終了扱いにはしない)
+  const festivalOver = useMemo(() => festivalFinished(), [tick]);
   const syncLabel = backendConfigured ? formatTime(fetchedAt) : (booths.length ? formatTime(Math.max(...booths.map((b) => b.lastUpdated || 0))) : "—");
   const gridClass = `grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 ${density === "compact" ? "gap-2" : "gap-3.5"}`;
   const daysToGo = daysUntilFestival();
@@ -789,7 +800,6 @@ function AppInner(): React.JSX.Element {
       {noticesOpen && (
         <NoticeBoardSheet
           notices={settings.notices ?? []}
-          isAdmin={staffRole === "admin"}
           busy={busy}
           onSave={(next) => void saveNotices(next)}
           onClose={() => setNoticesOpen(false)}
@@ -873,7 +883,7 @@ function AppInner(): React.JSX.Element {
                 <div className="flex-1 min-w-0 overflow-hidden transition-all duration-300"
                   style={{ maxWidth: headerCompact ? 240 : 0, opacity: headerCompact ? 1 : 0 }} aria-hidden={!headerCompact}>
                   <div className="truncate text-center text-white text-[11px] font-black bg-white/25 backdrop-blur rounded-full px-3 py-1.5">
-                    {openBooths.length > 0 ? `🟢${openBooths.length}/${booths.length} ⚡${readyNow}件 ⏱${avgWait}分` : "🎪 全企画が準備中です"}
+                    {festivalOver && openBooths.length > 0 ? "🎪 本日の公開は終了しました" : openBooths.length > 0 ? `🟢${openBooths.length - soldOutCount}/${booths.length} ⚡${readyNow}件 ⏱${avgWait}分` : "🎪 全企画が準備中です"}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -905,11 +915,33 @@ function AppInner(): React.JSX.Element {
               {/* スクロール中は畳む。ヘッダーが画面の半分を占めないようにするため。 */}
               <div className="overflow-hidden transition-all duration-300"
                 style={{ maxHeight: headerCompact ? 0 : 240, opacity: headerCompact ? 0 : 1 }} aria-hidden={headerCompact}>
-                {openBooths.length > 0 ? (
-                  <div className="grid grid-cols-3 gap-2 xl:max-w-2xl">
-                    <StatCard label="⚡すぐ入れる" value={`${readyNow}`} unit="件" />
-                    <StatCard label="🟢営業中" value={`${openBooths.length}`} unit={`/${booths.length}`} />
-                    <StatCard label="⏱平均待ち" value={`${avgWait}`} unit="分" />
+                {openBooths.length > 0 && !festivalOver ? (
+                  <>
+                    <div className="grid grid-cols-3 gap-2 xl:max-w-2xl">
+                      <StatCard label="⚡すぐ入れる" value={`${readyNow}`} unit="件" />
+                      <StatCard label="🟢営業中" value={`${openBooths.length - soldOutCount}`} unit={`/${booths.length}`} />
+                      <StatCard label="⏱平均待ち" value={`${avgWait}`} unit="分" />
+                    </div>
+                    {/* 「営業中なのに売り切れ・情報が古い」は当日いちばん多い行き違い。数を先に伝える */}
+                    {(soldOutCount > 0 || staleCount > 0) && (
+                      <div className="mt-2 flex items-center gap-1.5 flex-wrap text-[11px] font-black">
+                        {soldOutCount > 0 && (
+                          <span className="px-2 py-1 rounded-full bg-white/90 text-red-600">🛍️ 完売 {soldOutCount}件</span>
+                        )}
+                        {staleCount > 0 && (
+                          <span className="px-2 py-1 rounded-full bg-white/90 text-amber-700">⚠ 情報が古い {staleCount}件</span>
+                        )}
+                        <span className="text-white/90">は上の件数から除いています</span>
+                      </div>
+                    )}
+                  </>
+                ) : festivalOver && openBooths.length > 0 ? (
+                  /* 閉店を押し忘れた企画が残っていても、終了後に待ち時間を信じさせない */
+                  <div className="rounded-2xl bg-white/90 backdrop-blur px-3.5 py-2.5 shadow-sm xl:max-w-2xl">
+                    <div className="text-sm font-black" style={{ color: THEME.pinkDeep }}>🎪 本日の公開は終了しました</div>
+                    <div className="text-xs mt-0.5 leading-relaxed" style={{ color: "var(--ink)" }}>
+                      表示が残っている企画もありますが、受付は終了しています。ご来場ありがとうございました！
+                    </div>
                   </div>
                 ) : (
                   /* 開場前は0が3つ並ぶだけで役に立たないので、案内文に置き換える */

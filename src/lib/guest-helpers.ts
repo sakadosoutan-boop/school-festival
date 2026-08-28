@@ -33,6 +33,16 @@ const jstMinutesOfDay = (now: number): number => {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 };
 
+/**
+ * 一般公開が完全に終わったか(16:00以降、または開催日以外)。
+ * 15:30〜16:00は校舎への入場が終わっただけで、中の企画はまだ営業しているので終了扱いにしない。
+ * 閉店を押し忘れた企画が残っていても、終了後は待ち時間を信じさせないために使う。
+ */
+export function festivalFinished(now: number = Date.now()): boolean {
+  if (todayFestivalDay(now) == null) return true;
+  return jstMinutesOfDay(now) >= GENERAL_CLOSE_MIN;
+}
+
 /** 開催日だけ、入場終了30分前から案内を出す(開催日以外はnull)。 */
 export function closingNotice(now: number = Date.now()): ClosingNotice | null {
   if (todayFestivalDay(now) == null) return null;

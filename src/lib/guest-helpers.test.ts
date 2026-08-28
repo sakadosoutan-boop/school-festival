@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCourses, fallbackDescription, isCultureClub } from "./guest-helpers";
+import { buildCourses, fallbackDescription, festivalFinished, isCultureClub } from "./guest-helpers";
 import { makeBooth, seedBooths } from "./festival";
 
 describe("fallbackDescription", () => {
@@ -72,5 +72,26 @@ describe("buildCourses", () => {
   it("drops courses that have nothing to visit", () => {
     // 開場前は誰も営業していないので「今すぐ回れる」は出ない
     expect(buildCourses(all).some((c) => c.id === "quick")).toBe(false);
+  });
+});
+
+describe("festivalFinished", () => {
+  const at = (iso: string) => new Date(iso).getTime();
+
+  it("is not finished while booths are still open after entry closes", () => {
+    expect(festivalFinished(at("2026-08-29T15:29:00+09:00"))).toBe(false);
+    // 15:30は校舎への入場が終わるだけ。中の企画は16:00まで営業している
+    expect(festivalFinished(at("2026-08-29T15:40:00+09:00"))).toBe(false);
+    expect(festivalFinished(at("2026-08-29T15:59:00+09:00"))).toBe(false);
+  });
+
+  it("is finished from 16:00 on a festival day", () => {
+    expect(festivalFinished(at("2026-08-29T16:00:00+09:00"))).toBe(true);
+    expect(festivalFinished(at("2026-08-30T16:30:00+09:00"))).toBe(true);
+  });
+
+  it("is finished on any non-festival day", () => {
+    expect(festivalFinished(at("2026-08-28T12:00:00+09:00"))).toBe(true);
+    expect(festivalFinished(at("2026-08-31T10:00:00+09:00"))).toBe(true);
   });
 });

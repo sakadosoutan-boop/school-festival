@@ -306,7 +306,12 @@ export async function saveStage(pin: string, stage: StageProgram): Promise<ApiRe
 
 export async function updateSettings(pin: string, patch: Partial<FestivalSettings>): Promise<ApiResult<FestivalSettings>> {
   if (!backendConfigured) {
-    if (demoRole(pin) !== "admin") return { ok: false, error: "この操作は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    // 本番と同じ権限: 全体お知らせは管理者のみ、落とし物などの掲示は更新用PINでも可
+    const role = demoRole(pin);
+    if (!role) return { ok: false, error: "スタッフPINが違います。", code: "INVALID_PIN" };
+    if (typeof patch.emergencyNotice === "string" && role !== "admin") {
+      return { ok: false, error: "全体お知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" };
+    }
     const data = readDemo();
     data.settings = { ...data.settings, ...patch };
     writeDemo(data);

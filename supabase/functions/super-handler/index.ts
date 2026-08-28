@@ -563,12 +563,16 @@ Deno.serve(async (request) => {
     }
 
     if (action === "update_settings") {
-      if (role !== "admin") return respond({ ok: false, error: "お知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
       const patch = body.patch as Record<string, unknown> | undefined;
       const hasEmergency = typeof patch?.emergencyNotice === "string";
       const hasNotices = Array.isArray(patch?.notices);
       if (!patch || (!hasEmergency && !hasNotices)) {
         return respond({ ok: false, error: "設定データが不正です。", code: "INVALID_PAYLOAD" }, 400);
+      }
+      // 全体お知らせ(画面最上部の赤帯)は影響が大きいので管理者のみ。
+      // 落とし物・迷子の掲示は当日その場で出したいので、更新用PINでも操作できる。
+      if (hasEmergency && role !== "admin") {
+        return respond({ ok: false, error: "全体お知らせの更新は管理者PINが必要です。", code: "ADMIN_ONLY" }, 403);
       }
 
       if (hasEmergency) {
