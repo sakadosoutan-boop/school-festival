@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, BookOpen, ChevronRight, Heart, HelpCircle, Info, MapPin, Minus as MinusIcon, TrendingDown, TrendingUp, WifiOff } from "lucide-react";
+import { AlertTriangle, BookOpen, ChevronRight, Heart, HelpCircle, Info, MapPin, Minus as MinusIcon, RefreshCw, TrendingDown, TrendingUp, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   accentFor, allSoldOut, CATEGORIES, computeTrend, formatLocation, formatOrganizer, formatRelative,
-  freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, venueEmoji, VERY_STALE_MINUTES,
+  FESTIVAL_STALE_MINUTES, FESTIVAL_VERY_STALE_MINUTES, freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, venueEmoji, VERY_STALE_MINUTES,
 } from "../lib/festival";
 import { fallbackDescription, isKidsFriendly, summarizeWaitHistory } from "../lib/guest-helpers";
 import { DEMO_ADMIN_PIN, DEMO_STAFF_PIN, backendConfigured } from "../lib/api";
+import { forceUpdate } from "../lib/pwa";
 import type { Booth } from "../types";
 import { BoothIcon, Pill, Sheet, Sparkline, StaleBadge, WaitChart } from "./ui";
 import logoSrc from "../assets/logo.png";
@@ -427,7 +428,7 @@ const GUEST_FAQS = [
 const STAFF_FAQS = [
   { q: "PINを忘れた / 知らない", a: "ブース班長か実行委員に確認してください。お客さんとして見るだけなら「ホーム」タブでPINなしで閲覧できます。全体管理(お知らせ・復元・PIN変更)は管理者PINが必要です。" },
   { q: "待ち時間が0分なのに行列がある", a: "そのブースの担当者が人数を入力していません。スタッフモードから列の人数を入力してください。" },
-  { q: "情報が古いと表示される", a: `${STALE_MINUTES}分以上更新がないと「更新待ち」、${VERY_STALE_MINUTES}分以上で数字が隠れます。担当者がアプリを開いて操作すれば自動で新しくなります。` },
+  { q: "情報が古いと表示される", a: `しばらく更新がないと「更新待ち」、さらに時間が経つと数字が隠れます(開催日は${FESTIVAL_STALE_MINUTES}分/${FESTIVAL_VERY_STALE_MINUTES}分、準備期間は${STALE_MINUTES}分/${VERY_STALE_MINUTES}分)。担当者がアプリを開いて操作すれば自動で新しくなります。` },
   { q: "「ご案内しました」を押し間違えた", a: "1分以内なら、ボタンのすぐ下に「取り消す」が出ます。それを押せば元に戻ります。" },
   { q: "ステージ発表の時間割を追加したい", a: "スタッフ→ステージ進行を管理→会場を選んで「公演を追加」。体育館ステージのほか、演劇部・音楽部・放送部など会場ごとに登録できます(新しい会場名を入力すると一覧に追加されます)。" },
   { q: "2人で同じブースを操作したい", a: "同時更新による上書きは防止され、競合時は最新情報の再読込を案内します。混乱を防ぐため、通常は1ブース1端末を推奨します。" },
@@ -490,7 +491,16 @@ export const HelpSheet = ({ onClose }: { onClose: () => void }) => {
             );
           })}
         </div>
-        <div className="text-center text-[11px] text-stone-400 mt-4">ビルド {__BUILD_ID__}</div>
+        {/* 当日の朝、全員を確実に最新版へ揃えるための最後の手段。
+            通常は自動更新されるので、ここは「それでも直らないとき」用。 */}
+        <button onClick={() => void forceUpdate()}
+          className="w-full mt-5 py-3 rounded-2xl border-2 border-stone-200 bg-white text-stone-700 font-bold text-sm active:scale-95 flex items-center justify-center gap-1.5">
+          <RefreshCw size={15} strokeWidth={2.6} /> アプリを最新版にする
+        </button>
+        <div className="text-center text-[11px] text-stone-400 mt-2">
+          保存済みの表示データを捨てて読み込み直します（お気に入り・スタンプは残ります）
+        </div>
+        <div className="text-center text-[11px] text-stone-400 mt-3">ビルド {__BUILD_ID__}</div>
       </div>
     </Sheet>
   );
