@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Eye, HelpCircle, LayoutGrid, List, Map as MapIcon, Megaphone, Monitor, Moon, Music, RefreshCw, ShieldCheck, Star, Sun, Type, WifiOff } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronRight, Eye, HelpCircle, LayoutGrid, List, Map as MapIcon, Megaphone, Monitor, Moon, Music, RefreshCw, ShieldCheck, Star, Sun, Type, WifiOff } from "lucide-react";
 import {
   allSoldOut, avgCycle, BUILDINGS, calcWait, CATEGORIES, daysUntilFestival, formatTime, HEARTBEAT_MS, makeBooth, REFRESH_MS,
-  findVenueForBooth, MAIN_STAGE, sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME,
+  classOrderRank, findVenueForBooth, MAIN_STAGE, ORG_TYPES, sanitizeStage, seedBooths, seedStage, STALE_MINUTES, stageNowNext, THEME,
   todayFestivalDay, VOTE_FORM_URL,
 } from "./lib/festival";
 import {
@@ -131,6 +131,10 @@ function AppInner(): React.JSX.Element {
   const buildingPan = useDragScroll<HTMLDivElement>();
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState("default");
+  // 並び替えの向き。待ち時間なら 昇順=空いてる順 / 降順=混んでる順
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // 団体種別の絞り込み(クラス / 部活・委員会 / その他)
+  const [orgFilter, setOrgFilter] = useState("all");
   // ワンタップ絞り込み: 営業中のみ / すぐ入れる(5分以内・完売以外) / お子さま向け
   const [quickFilter, setQuickFilter] = useState<"none" | "open" | "quick" | "kids">("none");
   // 今いる棟(HR棟・特別棟…)で絞り込む。校舎を移動せずに回れる企画を探すため。
@@ -681,13 +685,43 @@ function AppInner(): React.JSX.Element {
       // カテゴリの言い換え(「食べ物」→フード等)や商品名でも引けるようにする
       list = list.filter((b) => normalizeForSearch(boothSearchText(b)).includes(normalized));
     }
-    if (sortBy === "wait_asc") list = [...list].sort((a, b) => (!a.isOpen && b.isOpen ? 1 : a.isOpen && !b.isOpen ? -1 : a.waitMinutes - b.waitMinutes));
-    else if (sortBy === "wait_desc") list = [...list].sort((a, b) => b.waitMinutes - a.waitMinutes);
-    else if (sortBy === "favorites") list = list.filter((b) => favorites.includes(b.id));
+    if (orgFilter !== "all") list = list.filter((b) => (b.orgType || "other") === orgFilter);
+    if (sortBy === "favorites") return list.filter((b) => favorites.includes(b.id));
+
+    // 昇順/降順は並び替えの向きだけを変える。登録順のときは並びをそのまま反転する。
+    const flip = sortDir === "desc" ? -1 : 1;
+    if (sortBy === "wait") {
+      // 準備中は待ち時間を持たないので、向きにかかわらず最後にまとめる
+      list = [...list].sort((a, b) =>
+        (!a.isOpen && b.isOpen ? 1 : a.isOpen && !b.isOpen ? -1 : (a.waitMinutes - b.waitMinutes) * flip));
+    } else if (sortBy === "class") {
+      list = [...list].sort((a, b) => {
+        const ra = classOrderRank(a), rb = classOrderRank(b);
+        // 部活・委員会・その他は学年を持たない。「3年から」でも先頭に来ないよう常に最後へ
+        const aOther = ra >= 100_000, bOther = rb >= 100_000;
+        if (aOther !== bOther) return aOther ? 1 : -1;
+        return (ra - rb) * flip || a.name.localeCompare(b.name, "ja");
+      });
+    } else if (sortDir === "desc") {
+      list = [...list].reverse();
+    }
     return list;
-  }, [booths, building, category, favorites, query, quickFilter, sortBy]);
+  }, [booths, building, category, favorites, orgFilter, query, quickFilter, sortBy, sortDir]);
 
   // 棟の絞り込みチップは、実際に企画がある棟だけ出す(空のチップを押させない)
+  // 「昇順/降順」だけでは何が起きるか分からないので、並び替えキーごとに言葉を変える
+  const sortDirLabel = sortBy === "wait"
+    ? (sortDir === "asc" ? "空いてる順" : "混んでる順")
+    : sortBy === "class"
+      ? (sortDir === "asc" ? "1年から" : "3年から")
+      : (sortDir === "asc" ? "昇順" : "降順");
+
+  // 実際に企画がある団体種別だけを選択肢に出す(選んでも0件、を作らない)
+  const orgOptions = useMemo(
+    () => ORG_TYPES.filter((o) => booths.some((b) => (b.orgType || "other") === o.id)),
+    [booths],
+  );
+
   const buildingChips = useMemo(() => BUILDINGS.filter((b) => booths.some((x) => x.building === b.id)), [booths]);
   const favoriteBooths = useMemo(() => booths.filter((b) => favorites.includes(b.id)), [booths, favorites]);
   const courses = useMemo(() => buildCourses(booths), [booths]);
@@ -1051,13 +1085,35 @@ function AppInner(): React.JSX.Element {
                     <LayoutGrid size={15} strokeWidth={2.8} />
                   </button>
                 </div>
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-xs font-bold bg-white border-2 rounded-full px-3 py-1.5 outline-none" style={{ color: "var(--ink)", borderColor: `${THEME.purple}44` }} aria-label="並び順">
-                  <option value="default">並び順: デフォルト</option>
-                  <option value="wait_asc">空いてる順</option>
-                  <option value="wait_desc">混んでる順</option>
-                  <option value="favorites">お気に入り</option>
-                </select>
               </div>
+            </div>
+
+            {/* 団体でしぼる・並べ替える。1行に収まらないので件数の行とは分けている */}
+            <div className="flex items-center gap-1.5 mb-3 flex-wrap">
+              <select value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)}
+                className="text-xs font-bold bg-white border-2 rounded-full px-3 py-1.5 outline-none"
+                style={{ color: "var(--ink)", borderColor: orgFilter === "all" ? `${THEME.purple}44` : THEME.purple }} aria-label="団体でしぼる">
+                <option value="all">👥 すべての団体</option>
+                {orgOptions.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                className="text-xs font-bold bg-white border-2 rounded-full px-3 py-1.5 outline-none"
+                style={{ color: "var(--ink)", borderColor: `${THEME.purple}44` }} aria-label="並び順">
+                <option value="default">並び順: 登録順</option>
+                <option value="wait">待ち時間</option>
+                <option value="class">学年・クラス</option>
+                <option value="favorites">お気に入りだけ</option>
+              </select>
+              {/* お気に入りだけの表示は絞り込みなので、向きの切り替えは出さない */}
+              {sortBy !== "favorites" && (
+                <button onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                  aria-label={`並び替えの向き: ${sortDirLabel}。タップで切り替え`}
+                  className="flex items-center gap-1 text-xs font-bold bg-white border-2 rounded-full pl-2 pr-2.5 py-1.5 active:scale-95 transition-all"
+                  style={{ color: "var(--ink)", borderColor: `${THEME.purple}44` }}>
+                  {sortDir === "asc" ? <ArrowUp size={13} strokeWidth={3} /> : <ArrowDown size={13} strokeWidth={3} />}
+                  {sortDirLabel}
+                </button>
+              )}
             </div>
 
             {/* お気に入りは絞り込みに関係なく先頭に固定する(いつでもすぐ開けるように) */}
@@ -1081,6 +1137,7 @@ function AppInner(): React.JSX.Element {
             {filtered.length === 0 && (
               <EmptyState icon={booths.length === 0 ? "🎪" : "🔍"} title={booths.length === 0 ? "まだブースがありません" : "該当する店舗がありません"}
                 message={booths.length === 0 ? "スタッフタブから追加してください"
+                  : orgFilter !== "all" ? "団体の絞り込みを「すべての団体」に戻すと、ほかの企画も表示されます"
                   : building !== "all" ? "「今いる棟」の絞り込みを「すべて」に戻すと、ほかの棟の企画も表示されます"
                   : quickFilter !== "none" ? "「営業中のみ」「すぐ入れる」「お子さま向け」の絞り込みを外すと全ブースが表示されます"
                   : sortBy === "favorites" ? "♡をタップしてお気に入りに追加できます"
