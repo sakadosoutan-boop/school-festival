@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, daysUntilFestival, findVenueForBooth, formatLocation, isSoldOut,
+  ALLERGENS, avgCycle, allSoldOut, boothsForRoom, calcWait, classOrderRank, daysUntilFestival, findVenueForBooth, formatLocation, isSoldOut,
   itemStatus, makeBooth, makeStageItem, matchesBoothQuery, MAX_PERFORMERS, MAX_WAIT_MINUTES, minToHHMM, normRoom,
   PERFORMER_DESC_MAX, PERFORMER_NAME_MAX, PERFORMER_ROLE_MAX, sanitizeStage,
   seedBooths, seedStage, serveBlockedReason, sortBoothsForStaff, sortItems, summarizeBooths, toMin,
@@ -442,5 +442,31 @@ describe("summarizeBooths", () => {
     const summary = summarizeBooths(booths, now);
     expect(summary.soldOutBooths.map((b) => b.id).sort()).toEqual(["full", "partial"]);
     expect(summary.fullySoldOutCount).toBe(1);
+  });
+});
+
+describe("classOrderRank", () => {
+  const cls = (grade: number, classNum: number) => makeBooth({ orgType: "class", grade, classNum }, `c${grade}${classNum}`);
+
+  it("orders classes by grade then class number", () => {
+    expect(classOrderRank(cls(1, 1))).toBeLessThan(classOrderRank(cls(1, 2)));
+    expect(classOrderRank(cls(1, 9))).toBeLessThan(classOrderRank(cls(2, 1)));
+    expect(classOrderRank(cls(2, 6))).toBeLessThan(classOrderRank(cls(3, 1)));
+  });
+
+  it("sends clubs and others behind every class", () => {
+    const club = makeBooth({ orgType: "club", orgName: "美術部" }, "k1");
+    const other = makeBooth({ orgType: "other", orgName: "PTA" }, "o1");
+    expect(classOrderRank(club)).toBeGreaterThan(classOrderRank(cls(3, 9)));
+    expect(classOrderRank(other)).toBeGreaterThan(classOrderRank(cls(3, 9)));
+  });
+
+  it("sorts a mixed list into 1年1組 → 3年9組 → 部活", () => {
+    const list = [
+      makeBooth({ orgType: "club", orgName: "写真部", name: "写真部" }, "k"),
+      cls(3, 9), cls(1, 1), cls(2, 4),
+    ];
+    const sorted = [...list].sort((a, b) => classOrderRank(a) - classOrderRank(b));
+    expect(sorted.map(classOrderRank)).toEqual([101, 204, 309, 100_000]);
   });
 });

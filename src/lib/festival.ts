@@ -114,6 +114,13 @@ export const ORG_TYPES = [
   { id: "club", label: "部活・委員会" },
   { id: "other", label: "その他" },
 ] as const;
+/**
+ * 学年・クラス順の並び替えキー。1年1組=101 → 3年9組=309。
+ * クラス以外(部活・委員会・その他)は学年を持たないので、まとめて後ろへ送る。
+ */
+export const classOrderRank = (booth: Booth): number =>
+  booth.orgType === "class" ? (booth.grade || 0) * 100 + (booth.classNum || 0) : 100_000;
+
 export const GRADES = [1, 2, 3];
 export const CLASS_NUMS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
