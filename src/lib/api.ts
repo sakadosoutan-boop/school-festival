@@ -163,15 +163,49 @@ export function hasCachedData(): boolean {
 
 // knownVersionが最新と一致する間はサーバーが notModified を返し、
 // アイコン画像を含む大きなペイロードの転送をスキップする(全端末ポーリングの負荷対策)。
+/* ── アイコン画像の再送を省く ──
+   待ち時間は数十秒おきに変わるが、アイコンはほとんど変わらない。
+   端末が既に持っているアイコンを「id→rev」で申告し、revが一致したものだけ
+   サーバーが画像を省いて返す(iconUnchanged)。省かれた分はキャッシュから戻す。
+   申告していないものは必ず送られてくるので、画像が欠けたままにはならない。 */
+type IncomingBooth = Partial<Booth> & { id: string; iconUnchanged?: boolean };
+
+function knownIconRevs(cached: FestivalData | null): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const booth of cached?.booths ?? []) {
+    if (booth.iconImage && typeof booth.rev === "number") map[booth.id] = booth.rev;
+  }
+  return map;
+}
+
+function restoreIcons(incoming: IncomingBooth[], cached: FestivalData | null): IncomingBooth[] {
+  if (!cached) return incoming;
+  const byId = new Map(cached.booths.map((b) => [b.id, b]));
+  return incoming.map((booth) => {
+    if (!booth.iconUnchanged) return booth;
+    const previous = byId.get(booth.id);
+    // 申告した本人しか省かれないが、念のためキャッシュに無ければそのまま(絵文字表示)
+    return previous?.iconImage ? { ...booth, iconImage: previous.iconImage } : booth;
+  });
+}
+
 export async function fetchAll(knownVersion?: string): Promise<ApiResult<FestivalData>> {
   if (!backendConfigured) {
     return { ok: true, data: readDemo() };
   }
-  const result = await remote<FestivalData & { notModified?: boolean }>("get_public", knownVersion ? { knownVersion } : {});
+  const cached = knownVersion ? cachedData() : null;
+  const payload: Record<string, unknown> = {};
+  if (knownVersion) {
+    payload.knownVersion = knownVersion;
+    const icons = knownIconRevs(cached);
+    if (Object.keys(icons).length > 0) payload.knownIcons = icons;
+  }
+  const result = await remote<FestivalData & { notModified?: boolean }>("get_public", payload);
   if (result.ok && result.data?.notModified) return { ok: true, notModified: true };
   if (result.ok && result.data) {
+    const incoming = restoreIcons((result.data.booths ?? []) as IncomingBooth[], cached);
     const data: FestivalData = {
-      booths: (result.data.booths ?? []).map((b) => makeBooth(b, b.id)),
+      booths: incoming.map((b) => makeBooth(b, b.id)),
       stage: sanitizeStage(result.data.stage),
       settings: { ...DEFAULT_SETTINGS, ...(result.data.settings ?? {}) },
       version: String(result.data.version ?? ""),

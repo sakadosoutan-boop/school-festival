@@ -335,7 +335,28 @@ async function dataEtag(): Promise<string> {
   return String(data ?? "");
 }
 
-async function getPublicData(version?: string) {
+/**
+ * ポーリングのたびに全ブースのアイコン画像を送り直すと、写真アイコンが増えたときに
+ * 通信量が跳ね上がる(実測: 256pxで1枚3.5KB、43件で約151KB/回)。
+ * クライアントが「このブースのrev版のアイコンはもう持っている」と申告したものだけ
+ * 画像を省く。申告が無ければ必ず送るので、画像が欠けたままになることはない。
+ */
+function stripKnownIcons(booths: unknown[], knownIcons: Record<string, unknown> | null): unknown[] {
+  if (!knownIcons) return booths;
+  return booths.map((doc) => {
+    const booth = doc as Record<string, unknown>;
+    const id = typeof booth.id === "string" ? booth.id : "";
+    if (!id || !booth.iconImage) return doc;
+    const known = knownIcons[id];
+    // revが一致したときだけ省く。型や値が少しでも違えば送る(安全側)
+    if (typeof known === "number" && typeof booth.rev === "number" && known === booth.rev) {
+      return { ...booth, iconImage: "", iconUnchanged: true };
+    }
+    return doc;
+  });
+}
+
+async function getPublicData(version?: string, knownIcons: Record<string, unknown> | null = null) {
   const [settingsResult, boothsResult, stageResult] = await Promise.all([
     // select("*")にしておくと、掲示板(notices)のマイグレーション未実行でも読取は壊れない
     supabase.from("festival_settings").select("*").eq("id", true).single(),
@@ -346,7 +367,7 @@ async function getPublicData(version?: string) {
   if (error) throw error;
   const settingsRow = settingsResult.data as Record<string, unknown>;
   return {
-    booths: (boothsResult.data ?? []).map((row) => row.doc),
+    booths: stripKnownIcons((boothsResult.data ?? []).map((row) => row.doc), knownIcons),
     stage: stageResult.data?.doc ?? null,
     settings: {
       festivalName: settingsRow.festival_name,
@@ -463,7 +484,13 @@ Deno.serve(async (request) => {
       if (knownVersion && knownVersion === version) {
         return respond({ ok: true, data: { notModified: true, version } });
       }
-      return respond({ ok: true, data: await getPublicData(version) });
+      // 端末が既に持っているアイコンの版(id→rev)。上限を超える申告は無視して全部送る
+      const raw = body.knownIcons;
+      const knownIcons = raw && typeof raw === "object" && !Array.isArray(raw)
+        && Object.keys(raw as Record<string, unknown>).length <= 300
+        ? raw as Record<string, unknown>
+        : null;
+      return respond({ ok: true, data: await getPublicData(version, knownIcons) });
     }
 
     const identifier = await callerFingerprint(request);

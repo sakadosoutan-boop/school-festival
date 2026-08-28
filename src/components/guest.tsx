@@ -5,7 +5,7 @@ import {
   accentFor, allSoldOut, CATEGORIES, computeTrend, formatLocation, formatOrganizer, formatRelative,
   freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, venueEmoji, VERY_STALE_MINUTES,
 } from "../lib/festival";
-import { isKidsFriendly, summarizeWaitHistory } from "../lib/guest-helpers";
+import { fallbackDescription, isKidsFriendly, summarizeWaitHistory } from "../lib/guest-helpers";
 import { DEMO_ADMIN_PIN, DEMO_STAFF_PIN, backendConfigured } from "../lib/api";
 import type { Booth } from "../types";
 import { BoothIcon, Pill, Sheet, Sparkline, StaleBadge, WaitChart } from "./ui";
@@ -342,7 +342,9 @@ export const BoothDetailSheet = ({ booth, onClose, isFavorite, onToggleFavorite,
               <span className="text-xs font-black flex-shrink-0" style={{ color: THEME.purple }}>時間割を見る →</span>
             </button>
           )}
-          <InfoRow icon={Info} label="紹介" value={booth.description} multiline />
+          {/* 紹介文が空でも「まだ登録されていません」で終わらせず、
+              分かっている情報からかわり文を出す(表示だけ・保存はしない) */}
+          <InfoRow icon={Info} label="紹介" value={booth.description || fallbackDescription(booth)} multiline />
         </div>
 
         {onToggleStamp && (

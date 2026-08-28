@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Info, Minus, Monitor, Moon, Plus, Sun, Type, X } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent, ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, Info, Minus, Monitor, Moon, Plus, Sun, SunMedium, Type, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { freshness } from "../lib/festival";
 import type { Booth } from "../types";
@@ -212,8 +212,46 @@ export const Sheet = ({ onClose, title, children }: { onClose: () => void; title
       previousFocus?.focus();
     };
   }, []);
+
+  /* ── 下フリックで閉じる ──
+     つまみ部分からのドラッグと、中身を一番上まで戻した状態からのドラッグだけを拾う。
+     中身をスクロールしている最中に閉じてしまわないようにするため。 */
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ y: number; t: number; active: boolean } | null>(null);
+  const [dragY, setDragY] = useState(0);
+  const [closing, setClosing] = useState(false);
+
+  const beginDrag = (clientY: number, fromHandle: boolean) => {
+    const atTop = (bodyRef.current?.scrollTop ?? 0) <= 0;
+    dragRef.current = { y: clientY, t: Date.now(), active: fromHandle || atTop };
+  };
+  const moveDrag = (clientY: number, event: ReactTouchEvent) => {
+    const drag = dragRef.current;
+    if (!drag || !drag.active) return;
+    const dy = clientY - drag.y;
+    if (dy <= 0) { setDragY(0); return; }
+    // 下方向に動かしている間はシートを追従させ、背後のスクロールは止める
+    if (event.cancelable) event.preventDefault();
+    setDragY(dy);
+  };
+  const endDrag = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || !drag.active) { setDragY(0); return; }
+    const speed = dragY / Math.max(1, Date.now() - drag.t); // px/ms
+    // ゆっくりでも十分下げたか、勢いよくはらったら閉じる
+    if (dragY > 110 || speed > 0.5) {
+      setClosing(true);
+      window.setTimeout(onClose, 180);
+      return;
+    }
+    setDragY(0);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end print:hidden" style={{ background: "rgba(0,0,0,0.4)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end print:hidden"
+      style={{ background: "rgba(0,0,0,0.4)", opacity: closing ? 0 : 1, transition: closing ? "opacity 0.18s ease-out" : undefined }}
+      onClick={onClose}>
       <div
         className="w-full max-w-xl mx-auto bg-stone-50 rounded-t-3xl shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -224,15 +262,28 @@ export const Sheet = ({ onClose, title, children }: { onClose: () => void; title
         tabIndex={-1}
         style={{
           maxHeight: "calc(100dvh - max(env(safe-area-inset-top), 24px))",
-          animation: "slideUp 0.25s cubic-bezier(0.16,1,0.3,1)",
+          animation: dragY || closing ? undefined : "slideUp 0.25s cubic-bezier(0.16,1,0.3,1)",
+          transform: closing ? "translateY(100%)" : dragY ? `translateY(${dragY}px)` : undefined,
+          transition: dragRef.current ? undefined : "transform 0.18s cubic-bezier(0.16,1,0.3,1)",
         }}
       >
-        <div className="flex-shrink-0 bg-stone-50 border-b border-stone-200 px-5 pt-4 pb-3 flex items-center gap-3 rounded-t-3xl relative">
-          <div className="w-10 h-1 bg-stone-300 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
+        <div className="flex-shrink-0 bg-stone-50 border-b border-stone-200 px-5 pt-4 pb-3 flex items-center gap-3 rounded-t-3xl relative touch-none"
+          onTouchStart={(e) => beginDrag(e.touches[0]?.clientY ?? 0, true)}
+          onTouchMove={(e) => moveDrag(e.touches[0]?.clientY ?? 0, e)}
+          onTouchEnd={endDrag}
+          onTouchCancel={endDrag}>
+          {/* つまみ。押している範囲を広げるため、見た目より大きい当たり判定にする */}
+          <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-24 h-6 flex items-start justify-center" aria-hidden="true">
+            <div className="w-10 h-1 bg-stone-300 rounded-full mt-3" />
+          </div>
           <div id={titleId} className="flex-1 font-bold text-stone-900 mt-1">{title}</div>
           <IconButton icon={X} onClick={onClose} label="閉じる" variant="soft" size="sm" />
         </div>
-        <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div ref={bodyRef} className="flex-1 overflow-y-auto overscroll-contain"
+          onTouchStart={(e) => beginDrag(e.touches[0]?.clientY ?? 0, false)}
+          onTouchMove={(e) => moveDrag(e.touches[0]?.clientY ?? 0, e)}
+          onTouchEnd={endDrag}
+          onTouchCancel={endDrag}>
           {children}
         </div>
       </div>
@@ -398,7 +449,8 @@ export const TimeStepper = ({ value, onMinus, onPlus }: { value: string; onMinus
    .darkクラス付与で行い、見た目はstyles.cssのCSS変数・クラス上書きが担う。
    index.htmlの初期化スクリプトが初回描画前に同じロジックでクラスを当てるため、
    ここではlocalStorageと現在のクラス状態を読み合わせるだけでチラつきが出ない。 */
-export type ThemeMode = "auto" | "light" | "dark";
+// outdoor = 屋外モード。真夏の直射日光下でも読めるよう、コントラストを最大まで上げる
+export type ThemeMode = "auto" | "light" | "dark" | "outdoor";
 const THEME_STORAGE_KEY = "machitime:v6:theme";
 
 function prefersDarkOS(): boolean {
@@ -415,7 +467,7 @@ function resolveIsDark(mode: ThemeMode): boolean {
 function readStoredTheme(): ThemeMode {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "light" || stored === "dark" || stored === "auto" ? stored : "auto";
+    return stored === "light" || stored === "dark" || stored === "outdoor" || stored === "auto" ? stored : "auto";
   } catch {
     return "auto";
   }
@@ -429,6 +481,7 @@ export function useTheme(): { mode: ThemeMode; isDark: boolean; setMode: (m: The
     const apply = () => {
       const dark = resolveIsDark(mode);
       document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.classList.toggle("outdoor", mode === "outdoor");
       setIsDark(dark);
     };
     apply();
@@ -441,14 +494,14 @@ export function useTheme(): { mode: ThemeMode; isDark: boolean; setMode: (m: The
   }, [mode]);
 
   const setMode = useCallback((next: ThemeMode) => setModeState(next), []);
-  const cycle = useCallback(() => setModeState((m) => (m === "auto" ? "light" : m === "light" ? "dark" : "auto")), []);
+  const cycle = useCallback(() => setModeState((m) => (m === "auto" ? "light" : m === "light" ? "dark" : m === "dark" ? "outdoor" : "auto")), []);
   return { mode, isDark, setMode, cycle };
 }
 
 export const ThemeToggle = () => {
   const { mode, cycle } = useTheme();
-  const Icon = mode === "dark" ? Moon : mode === "light" ? Sun : Monitor;
-  const label = mode === "dark" ? "夜間モード" : mode === "light" ? "昼間モード" : "自動(端末の設定に従う)";
+  const Icon = mode === "dark" ? Moon : mode === "light" ? Sun : mode === "outdoor" ? SunMedium : Monitor;
+  const label = mode === "dark" ? "夜間モード" : mode === "light" ? "昼間モード" : mode === "outdoor" ? "屋外モード(日なたでも見やすい)" : "自動(端末の設定に従う)";
   return (
     <button
       onClick={cycle}

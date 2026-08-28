@@ -1,5 +1,5 @@
 import type { Booth } from "../types";
-import { allSoldOut, BUILDINGS, todayFestivalDay } from "./festival";
+import { allSoldOut, BUILDINGS, CATEGORIES, formatLocation, formatOrganizer, todayFestivalDay } from "./festival";
 
 /* ═══════════ 来場者画面むけの純粋ヘルパー ═══════════
    画面から計算ロジックを切り離し、テストしやすい形にまとめる。 */
@@ -181,6 +181,24 @@ const CATEGORY_ALIASES: Record<string, string[]> = {
   exhibition: ["展示", "てんじ", "作品"],
   other: ["その他", "そのほか"],
 };
+
+/**
+ * 紹介文が未入力のブース向けに、表示だけのかわり文を組み立てる。
+ * ここで作った文はあくまで画面表示用で、保存はしない
+ * (生徒があとから本文を入れたら、そちらが必ず優先される)。
+ */
+export function fallbackDescription(booth: Booth): string {
+  const org = formatOrganizer(booth);
+  const place = formatLocation(booth);
+  const category = CATEGORIES.find((c) => c.id === booth.category);
+  const label = category && category.id !== "all" && category.id !== "other" ? category.label : "";
+  const who = org ? `${org}の` : "";
+  const what = label ? `${label}企画` : "企画";
+  const where = place ? `${place}で開催します。` : "";
+  const products = (booth.products || []).map((p) => p.name).filter(Boolean).slice(0, 3);
+  const items = products.length ? `${products.join("・")}などを用意しています。` : "";
+  return `${who}${what}です。${where}${items}くわしくは会場でご確認ください。`.replace(/。+/g, "。");
+}
 
 /** ブースを検索するときの対象文字列(名前・団体・場所に加え、カテゴリの言い換えも含む) */
 export function boothSearchText(booth: Booth): string {

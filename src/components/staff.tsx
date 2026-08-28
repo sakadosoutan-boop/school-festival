@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, ReactNode } from "react";
 import {
-  AlertTriangle, BellRing, Calculator, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Download,
+  AlertTriangle, BellRing, Calculator, Check, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock, Download,
   Info, LayoutDashboard, Lock, LogOut, Megaphone, Music, Plus, Minus, RefreshCw, Search, Settings, Smartphone,
   Sparkles, Trash2, Undo2, Upload, Users, X, Zap,
 } from "lucide-react";
@@ -14,7 +14,7 @@ import {
 } from "../lib/festival";
 import type { StaffSortKey } from "../lib/festival";
 import { backendConfigured, DEMO_ADMIN_PIN, DEMO_STAFF_PIN } from "../lib/api";
-import type { Booth, FestivalNotice, Product, SnapshotMeta, StaffRole } from "../types";
+import type { Booth, FestivalNotice, Product, SnapshotMeta, StaffRole, StageProgram } from "../types";
 import {
   BoothIcon, Confirm, Field, fileToIconDataUrl, Hint, IconButton, NumberStepper, QuickPick, Sheet, StaleBadge,
   StatCard, Wheel,
@@ -751,9 +751,10 @@ export const CalculatorSheet = ({ booth, onClose, onApply }: { booth: Booth; onC
 
 /* ═══════════ SETTINGS ═══════════ */
 
-export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, notices, onSaveNotices, showToast }: {
+export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onClose, onSavePin, onSaveEmergency, onExport, onImport, onResetSeed, onSaveSnapshot, onOpenSnapshots, onBulkOpen, notices, onSaveNotices, showToast }: {
   role: StaffRole;
   booths: Booth[];
+  stage?: StageProgram | null;
   emergencyNotice: string;
   busy: boolean;
   onClose: () => void;
@@ -965,7 +966,7 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
           onCancel={() => setConfirmBulk(null)}
         />
       )}
-      {dashboardOpen && <AdminDashboardSheet booths={booths} notices={notices} onClose={() => setDashboardOpen(false)} />}
+      {dashboardOpen && <AdminDashboardSheet booths={booths} stage={stage} notices={notices} onClose={() => setDashboardOpen(false)} />}
     </Sheet>
   );
 };
@@ -974,8 +975,42 @@ export const SettingsSheet = ({ role, booths, emergencyNotice, busy, onClose, on
 
 // 実行委員が当日ざっと状況を確認するための管理者専用サマリー。
 // 新規のAPI通信は行わず、既に読み込み済みのbooths/noticesだけから集計する(SettingsSheetから開く)。
-export const AdminDashboardSheet = ({ booths, notices, onClose }: { booths: Booth[]; notices: FestivalNotice[]; onClose: () => void }) => {
+/** 準備状況の1グループ。0件のときは行ごと出さない(視線を残件だけに向けるため) */
+const ReadinessGroup = ({ title, tone, items }: { title: string; tone: "warn" | "info"; items: { id: string; label: string; sub: string }[] }) => {
+  if (items.length === 0) return null;
+  const warn = tone === "warn";
+  return (
+    <div>
+      <div className="flex items-baseline gap-1.5 mb-1.5">
+        <span className={`text-xs font-black ${warn ? "text-amber-700" : "text-stone-600"}`}>{title}</span>
+        <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-full ${warn ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500"}`}>{items.length}件</span>
+      </div>
+      <div className="space-y-1">
+        {items.slice(0, 12).map((entry) => (
+          <div key={entry.id} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl ${warn ? "bg-amber-50" : "bg-stone-50"}`}>
+            <span className="flex-1 text-sm font-bold text-stone-900 truncate">{entry.label}</span>
+            <span className="text-[11px] text-stone-500 truncate max-w-[45%]">{entry.sub}</span>
+          </div>
+        ))}
+        {items.length > 12 && <div className="text-[11px] text-stone-400 px-1">ほか{items.length - 12}件</div>}
+      </div>
+    </div>
+  );
+};
+
+export const AdminDashboardSheet = ({ booths, stage, notices, onClose }: { booths: Booth[]; stage?: StageProgram | null; notices: FestivalNotice[]; onClose: () => void }) => {
   const summary = summarizeBooths(booths);
+  // 直前の追い込み用。まだ書けていない項目を持つ企画を洗い出す(読み取りのみ)
+  const readiness = useMemo(() => {
+    const noDescription = booths.filter((b) => !b.description?.trim());
+    const noIcon = booths.filter((b) => !b.iconImage && !b.emoji?.trim());
+    const noRoom = booths.filter((b) => !b.room?.trim() && !b.location?.trim());
+    const performers = (stage?.items ?? []).flatMap((item) =>
+      (item.performers ?? []).filter((p) => !p.description?.trim()).map((p) => ({ item, performer: p })));
+    return { noDescription, noIcon, noRoom, performers };
+  }, [booths, stage]);
+  const doneCount = booths.length - readiness.noDescription.length;
+  const percent = booths.length ? Math.round((doneCount / booths.length) * 100) : 100;
 
   return (
     <Sheet onClose={onClose} title="運営ダッシュボード">
@@ -984,6 +1019,28 @@ export const AdminDashboardSheet = ({ booths, notices, onClose }: { booths: Boot
           <StatCard label="営業中" value={`${summary.openCount}`} unit="件" />
           <StatCard label="準備中" value={`${summary.closedCount}`} unit="件" />
           <StatCard label="お知らせ" value={`${notices.length}`} unit="件掲示中" />
+        </div>
+
+        {/* 準備状況: 当日までに埋めてほしい項目が残っている企画を並べる */}
+        <div className="bg-white rounded-2xl p-4 border border-stone-200">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="font-bold text-stone-900 flex items-center gap-1.5"><ClipboardList size={15} className="text-indigo-600" strokeWidth={2.4} /> 準備状況</div>
+            <div className="text-xs font-black tabular-nums" style={{ color: percent === 100 ? "#047857" : THEME.orange }}>紹介文 {doneCount}/{booths.length}</div>
+          </div>
+          <div className="h-2 rounded-full bg-stone-100 overflow-hidden mb-3">
+            <div className="h-full rounded-full transition-all" style={{ width: `${percent}%`, background: percent === 100 ? "#10b981" : `linear-gradient(90deg,${THEME.orange},${THEME.pink})` }} />
+          </div>
+          {readiness.noDescription.length === 0 && readiness.noRoom.length === 0 && readiness.performers.length === 0 ? (
+            <div className="text-xs text-emerald-700 font-bold py-3 text-center bg-emerald-50 rounded-xl">すべての企画に紹介文と場所が入っています</div>
+          ) : (
+            <div className="space-y-3">
+              <ReadinessGroup title="紹介文が未入力" tone="warn" items={readiness.noDescription.map((b) => ({ id: b.id, label: b.name || "(無題)", sub: formatOrganizer(b) }))} />
+              <ReadinessGroup title="場所が未設定" tone="warn" items={readiness.noRoom.map((b) => ({ id: b.id, label: b.name || "(無題)", sub: formatOrganizer(b) }))} />
+              <ReadinessGroup title="アイコンが未設定" tone="info" items={readiness.noIcon.map((b) => ({ id: b.id, label: b.name || "(無題)", sub: formatOrganizer(b) }))} />
+              <ReadinessGroup title="出演者の意気込みが未入力" tone="info"
+                items={readiness.performers.map(({ item, performer }) => ({ id: `${item.id}:${performer.id}`, label: performer.name || "(名前未設定)", sub: `${item.title || "(無題)"}${performer.role ? ` · ${performer.role}` : ""}` }))} />
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl p-4 border border-stone-200">
