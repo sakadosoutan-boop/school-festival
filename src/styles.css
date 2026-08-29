@@ -151,8 +151,10 @@ html.dark .border-stone-100,
 html.dark .border-stone-200,
 html.dark .border-stone-300 { border-color: var(--line) !important; }
 html.dark .border-stone-900 { border-color: var(--surface-invert) !important; }
-/* divide-* は border-* とは別のクラス名で出力されるため、上の指定では効かない */
-html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line) !important; }
+/* divide-* は border-* とは別のクラス名で出力されるため、上の指定では効かない。
+   区切り線を持つ子がどれかはTailwindの版で変わる(v3は2番目以降にborder-top、
+   v4は最後以外にborder-bottom)ので、子ぜんぶに色を指定して版に依存しないようにする。 */
+html.dark .divide-stone-100 > * { border-color: var(--line) !important; }
 
 /* 落とし物・お知らせの種別ラベル。夜間モードでは暗い地に乗るので明るい側へ振る */
 html.dark {

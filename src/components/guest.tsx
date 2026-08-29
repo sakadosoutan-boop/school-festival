@@ -521,36 +521,39 @@ const NOTICE_META = {
 
 const noticeMeta = (kind: FestivalNotice["kind"]) => NOTICE_META[kind] ?? NOTICE_META.info;
 
-/** 掲示1件ぶんの行。ホームのプレビューと一覧シートで同じ見た目を使う。
-    clamp=ホーム用。長い説明文が3件続いてもカードが伸びないよう3行で切る(全文は一覧で読める)。 */
-const NoticeRow = ({ notice, clamp }: { notice: FestivalNotice; clamp?: boolean }) => {
+/** 掲示1件ぶんの行。
+    compact=ホーム用。1件を1行に収める。種類は絵文字で分かるのでラベルを出さず、
+    掲示時刻も省く(生徒が本文に拾った時刻を書くので、2つ時刻が並ぶと読みにくい)。
+    2行で切り、全文と詳しい情報は一覧シートで見せる。 */
+const NoticeRow = ({ notice, compact }: { notice: FestivalNotice; compact?: boolean }) => {
   const meta = noticeMeta(notice.kind);
   return (
-    <div className="flex items-start gap-2.5 py-2">
-      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+    <div className={`flex items-start gap-2 ${compact ? "py-1.5" : "py-2"}`}>
+      <span className={`${compact ? "w-5 h-5 text-[11px] rounded-md" : "w-7 h-7 text-sm rounded-lg"} flex items-center justify-center flex-shrink-0 mt-px`}
         style={{ backgroundColor: meta.bg, border: `1px solid ${meta.border}` }} aria-hidden="true">{meta.emoji}</span>
       <div className="min-w-0 flex-1">
-        <div className={`text-sm leading-snug break-words ${clamp ? "line-clamp-3" : ""}`} style={{ color: "var(--ink)" }}>{notice.text}</div>
-        <div className="text-[11px] font-bold mt-0.5" style={{ color: meta.color }}>
-          {meta.label}<span className="text-stone-400 font-normal"> · {formatTime(notice.ts)} 掲示</span>
-        </div>
+        <div className={`leading-snug break-words ${compact ? "text-[13px] line-clamp-2" : "text-sm"}`} style={{ color: "var(--ink)" }}>{notice.text}</div>
+        {!compact && (
+          <div className="text-[11px] font-bold mt-0.5" style={{ color: meta.color }}>
+            {meta.label}<span className="text-stone-400 font-normal"> · {formatTime(notice.ts)} 掲示</span>
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
-/** 引き取り場所の案内。ホーム・一覧の両方で同じ文言にする。
-    tinted=クリーム色の枠の中に置く場合。枠の色は夜間モードでも変わらないので、
-    文字色も固定にしないと「薄いグレー on クリーム」になって読めなくなる。 */
-const NoticeFooter = ({ dense, tinted }: { dense?: boolean; tinted?: boolean }) => (
-  <div className={`${dense ? "text-[11px]" : "text-xs"} leading-relaxed`}
-    style={{ color: tinted ? "#78350f" : "var(--ink-soft)" }}>
-    お心当たりのある方は、<strong className="font-bold" style={{ color: tinted ? "#451a03" : "var(--ink)" }}>案内所（HR棟2階・2-1と2-2の間）</strong>か、近くのスタッフ・教員へお声がけください。
+/** 引き取り場所の案内。一覧シートの末尾に置く。
+    地のクリーム色は夜間モードでも変わらないので、文字色も固定にしないと
+    「薄いグレー on クリーム」になって読めなくなる。 */
+const NoticeFooter = () => (
+  <div className="text-xs leading-relaxed" style={{ color: "#78350f" }}>
+    お心当たりのある方は、<strong className="font-bold" style={{ color: "#451a03" }}>案内所（HR棟2階・2-1と2-2の間）</strong>か、近くのスタッフ・教員へお声がけください。
   </div>
 );
 
 /** ホームに並べる件数。これを増やすと企画一覧が下へ押し出される。 */
-const PREVIEW_COUNT = 3;
+const PREVIEW_COUNT = 2;
 
 /** ホームに出すカード。新しい順に数件だけ見せて、続きは一覧シートへ送る。 */
 export const NoticeBoardCard = ({ notices, onOpenList }: { notices: FestivalNotice[]; onOpenList: () => void }) => {
@@ -561,26 +564,26 @@ export const NoticeBoardCard = ({ notices, onOpenList }: { notices: FestivalNoti
   if (sorted.length === 0) return null;
 
   return (
-    <div className="mb-4 rounded-2xl bg-white border-2 overflow-hidden" style={{ borderColor: "#fde68a" }}>
-      <div className="px-4 pt-3.5 pb-1 flex items-center gap-1.5">
-        <span className="text-base" aria-hidden="true">🧳</span>
-        <span className="font-black text-sm" style={{ color: "var(--ink)" }}>落とし物・お知らせ</span>
-        <span className="ml-auto text-[11px] font-black px-2 py-0.5 rounded-full"
+    <div className="mb-3 rounded-2xl bg-white border overflow-hidden" style={{ borderColor: "#fde68a" }}>
+      <div className="px-3 pt-2 pb-0.5 flex items-center gap-1.5">
+        <span className="text-[13px]" aria-hidden="true">🧳</span>
+        <span className="font-black text-[13px]" style={{ color: "var(--ink)" }}>落とし物・お知らせ</span>
+        <span className="ml-auto text-[10px] font-black px-1.5 py-0.5 rounded-full"
           style={{ backgroundColor: "#fffbeb", color: "#b45309", border: "1px solid #fde68a" }}>
           {lostCount > 0 ? `落とし物 ${lostCount}件` : `${sorted.length}件`}
         </span>
       </div>
-      <div className="px-4 divide-y divide-stone-100">
-        {preview.map((n) => <NoticeRow key={n.id} notice={n} clamp />)}
+      <div className="px-3 pb-1 divide-y divide-stone-100">
+        {preview.map((n) => <NoticeRow key={n.id} notice={n} compact />)}
       </div>
-      {/* 一覧はいつでも開けるようにする。掲示が少ないうちは件数だけ変えて同じ場所に出す。 */}
+      {/* 一覧はいつでも開けるようにする。掲示が少ないうちは件数だけ変えて同じ場所に出す。
+          引き取り場所もここに1行だけ添える(詳しい場所は一覧シートで案内する)。 */}
       <button onClick={onOpenList}
-        className="w-full mt-1 px-4 py-2.5 flex items-center justify-center gap-1 text-xs font-black border-t active:scale-[0.99] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+        className="w-full px-3 py-2 flex items-center justify-center gap-1 text-[11px] font-black border-t active:scale-[0.99] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
         style={{ color: "#b45309", backgroundColor: "#fffbeb", borderColor: "#fef3c7" }}>
-        {rest > 0 ? `ほか${rest}件 · 落とし物の一覧を見る` : "落とし物の一覧を見る"}
-        <ChevronRight size={14} strokeWidth={3} />
+        {rest > 0 ? `ほか${rest}件 · 一覧を見る（受け取りは案内所へ）` : "一覧を見る（受け取りは案内所へ）"}
+        <ChevronRight size={13} strokeWidth={3} />
       </button>
-      <div className="px-4 py-2.5 border-t border-stone-100"><NoticeFooter dense /></div>
     </div>
   );
 };
@@ -631,7 +634,7 @@ export const NoticeListSheet = ({ notices, onClose }: { notices: FestivalNotice[
         )}
 
         <div className="mt-4 p-3.5 rounded-2xl" style={{ backgroundColor: "#fffbeb", border: "1px solid #fde68a" }}>
-          <NoticeFooter tinted />
+          <NoticeFooter />
           <div className="text-[11px] mt-2 leading-relaxed" style={{ color: "#a16207" }}>
             掲示は実行委員が手作業で更新しています。届いたばかりの物はまだ載っていないことがあります。
           </div>
