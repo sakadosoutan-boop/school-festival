@@ -33,7 +33,7 @@ export const ALLERGENS = ["卵", "乳", "小麦", "そば", "落花生", "えび
 
 // 企画投票用GoogleフォームのURL。第53回(2026年度)のフォーム。
 // 年度が変わったら、ここを書き換えるか VITE_VOTE_FORM_URL で上書きする。
-const VOTE_FORM_URL_2026 = "https://docs.google.com/forms/d/e/1FAIpQLSfToKlZF8VpfhMqRW4IztZ8Ot7G42BIQcT1fjWSQ3y3ax7gVg/viewform";
+const VOTE_FORM_URL_2026 = "https://docs.google.com/forms/d/e/1FAIpQLSeSeWXoa8UCCQmr61kNhJxy-e3AEMBrnHcmXiAAesjHBTF3bA/viewform";
 export const VOTE_FORM_URL = ((import.meta.env?.VITE_VOTE_FORM_URL as string | undefined) ?? VOTE_FORM_URL_2026).trim();
 
 export const THEME = {
