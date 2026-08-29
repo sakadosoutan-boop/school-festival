@@ -1005,7 +1005,8 @@ export const SettingsSheet = ({ role, booths, stage, emergencyNotice, busy, onCl
 
 /* ═══════════ STAFF: 落とし物・お知らせの掲示 ═══════════
    当日いつでも必要になるので、設定の奥ではなくスタッフ画面の上部から直接開く。
-   掲示・削除はサーバー側でも管理者PIN必須。更新用PINのときは一覧だけ見せる。 */
+   掲示・削除は更新用PINでもできる(全体お知らせだけは影響が大きいので管理者PIN必須)。
+   ここで掲示した内容は、来場者のホーム最上部と「落とし物の一覧」にそのまま出る。 */
 const NOTICE_KINDS = [["lost", "🧳 落とし物"], ["child", "👶 迷子"], ["info", "📢 その他"]] as const;
 export const NOTICE_MAX = 30;
 
@@ -1030,7 +1031,7 @@ export const NoticeBoardSheet = ({ notices, busy, onSave, onClose, showToast }: 
       <div className="px-5 pb-8 pt-1 space-y-4">
         <div className="bg-white rounded-2xl p-4 border border-stone-200">
             <div className="font-bold text-stone-900 mb-1">新しく掲示する</div>
-            <p className="text-xs text-stone-500 mb-3 leading-relaxed">来場者のホーム画面に出ます(最大{NOTICE_MAX}件・100文字)。見つかったら削除してください。</p>
+            <p className="text-xs text-stone-500 mb-3 leading-relaxed">来場者のホーム最上部と「落とし物の一覧」に出ます(最大{NOTICE_MAX}件・100文字)。持ち主が見つかったら削除してください。</p>
             <div className="flex gap-1.5 mb-2">
               {NOTICE_KINDS.map(([k, label]) => (
                 <button key={k} onClick={() => setKind(k)} aria-pressed={kind === k}

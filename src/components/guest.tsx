@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, BookOpen, ChevronRight, Heart, HelpCircle, Info, MapPin, Minus as MinusIcon, RefreshCw, TrendingDown, TrendingUp, WifiOff } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  accentFor, allSoldOut, CATEGORIES, computeTrend, formatLocation, formatOrganizer, formatRelative,
+  accentFor, allSoldOut, CATEGORIES, computeTrend, formatLocation, formatOrganizer, formatRelative, formatTime,
   FESTIVAL_STALE_MINUTES, FESTIVAL_VERY_STALE_MINUTES, freshness, getStatus, isSoldOut, minutesSince, STALE_MINUTES, THEME, venueEmoji, VERY_STALE_MINUTES,
 } from "../lib/festival";
-import { fallbackDescription, isKidsFriendly, summarizeWaitHistory } from "../lib/guest-helpers";
+import { countNoticeKinds, fallbackDescription, isKidsFriendly, sortNotices, summarizeWaitHistory } from "../lib/guest-helpers";
 import { DEMO_ADMIN_PIN, DEMO_STAFF_PIN, backendConfigured } from "../lib/api";
 import { forceUpdate } from "../lib/pwa";
-import type { Booth } from "../types";
+import type { Booth, FestivalNotice } from "../types";
 import { BoothIcon, Pill, Sheet, Sparkline, StaleBadge, WaitChart } from "./ui";
 import logoSrc from "../assets/logo.png";
 
@@ -419,7 +419,7 @@ const GUEST_FAQS = [
   { q: "ステージ発表は何時から？", a: "体育館ステージは両日とも10:30〜15:20ごろに発表があります。ステージタブでタイムテーブルと「まもなく開演」を確認できます。演劇部・音楽部・放送部などの公演も、決まり次第ステージタブに追加されます。" },
   { q: "食べ物は買える？食べ歩きはできる？", a: "食品販売のクラスがあります(個包装の市販食品が中心です)。食べ歩きはできません。「かえる広場」のイートインスペースや、各団体が案内する飲食エリアでお召し上がりください。" },
   { q: "アレルギーが心配です", a: "アプリではアレルギーの情報をご案内していません。召し上がる前に、必ず各企画の掲示と担当の生徒に直接ご確認ください。" },
-  { q: "落とし物・迷子になったら？", a: "ホームの「お知らせ掲示板」に情報を掲示します。見つからないときは、受付や近くのスタッフ、運営本部へお声がけください。" },
+  { q: "落とし物・迷子になったら？", a: "お預かりしている落とし物は、ホーム画面いちばん上の「🧳 落とし物・お知らせ」に掲示しています。「落とし物の一覧を見る」から全件をご覧いただけます（落とし物・迷子でしぼりこめます）。掲示に無いときや、お心当たりの品を見つけたときは、案内所（HR棟2階・2-1と2-2の間）か近くのスタッフ・教員へお声がけください。" },
   { q: "けがをした・体調が悪い", a: "近くのスタッフ、または教員にお声がけください。すぐに対応します。" },
   { q: "トイレや休憩場所は？", a: "トイレは各校舎にあります。マップタブでおおよその位置を確認できます。飲食はイートインスペース(かえる広場)などをご利用ください。" },
   { q: "写真撮影・SNSは？", a: "撮影は可能ですが、他の来場者や生徒が写り込んだ写真のSNS公開はご配慮ください。各企画で撮影をお断りしている場合は、スタッフの案内に従ってください。" },
@@ -502,6 +502,140 @@ export const HelpSheet = ({ onClose }: { onClose: () => void }) => {
           保存済みの表示データを捨てて読み込み直します（お気に入り・スタンプは残ります）
         </div>
         <div className="text-center text-[11px] text-stone-400 mt-3">ビルド {__BUILD_ID__}</div>
+      </div>
+    </Sheet>
+  );
+};
+
+/* ═══════════ GUEST: 落とし物・お知らせ ═══════════
+   実行委員が掲示した内容を、来場者がホームから読めるようにする。
+   当日は落とし物が積み上がる(最大30件)ため、ホームには新しい数件だけを出し、
+   全部はシートで開く。ホームに全件並べると企画一覧が画面外へ押し出される。 */
+
+// 絵文字チップの地の色は固定。ラベルの文字色だけ、夜間モードで明るい側へ振れるよう変数にする
+const NOTICE_META = {
+  lost: { emoji: "🧳", label: "落とし物", color: "var(--notice-lost)", bg: "#fffbeb", border: "#fde68a" },
+  child: { emoji: "👶", label: "迷子", color: "var(--notice-child)", bg: "#ecfeff", border: "#a5f3fc" },
+  info: { emoji: "📢", label: "お知らせ", color: "var(--notice-info)", bg: "#f5f3ff", border: "#ddd6fe" },
+} as const;
+
+const noticeMeta = (kind: FestivalNotice["kind"]) => NOTICE_META[kind] ?? NOTICE_META.info;
+
+/** 掲示1件ぶんの行。ホームのプレビューと一覧シートで同じ見た目を使う。
+    clamp=ホーム用。長い説明文が3件続いてもカードが伸びないよう3行で切る(全文は一覧で読める)。 */
+const NoticeRow = ({ notice, clamp }: { notice: FestivalNotice; clamp?: boolean }) => {
+  const meta = noticeMeta(notice.kind);
+  return (
+    <div className="flex items-start gap-2.5 py-2">
+      <span className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+        style={{ backgroundColor: meta.bg, border: `1px solid ${meta.border}` }} aria-hidden="true">{meta.emoji}</span>
+      <div className="min-w-0 flex-1">
+        <div className={`text-sm leading-snug break-words ${clamp ? "line-clamp-3" : ""}`} style={{ color: "var(--ink)" }}>{notice.text}</div>
+        <div className="text-[11px] font-bold mt-0.5" style={{ color: meta.color }}>
+          {meta.label}<span className="text-stone-400 font-normal"> · {formatTime(notice.ts)} 掲示</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** 引き取り場所の案内。ホーム・一覧の両方で同じ文言にする。
+    tinted=クリーム色の枠の中に置く場合。枠の色は夜間モードでも変わらないので、
+    文字色も固定にしないと「薄いグレー on クリーム」になって読めなくなる。 */
+const NoticeFooter = ({ dense, tinted }: { dense?: boolean; tinted?: boolean }) => (
+  <div className={`${dense ? "text-[11px]" : "text-xs"} leading-relaxed`}
+    style={{ color: tinted ? "#78350f" : "var(--ink-soft)" }}>
+    お心当たりのある方は、<strong className="font-bold" style={{ color: tinted ? "#451a03" : "var(--ink)" }}>案内所（HR棟2階・2-1と2-2の間）</strong>か、近くのスタッフ・教員へお声がけください。
+  </div>
+);
+
+/** ホームに並べる件数。これを増やすと企画一覧が下へ押し出される。 */
+const PREVIEW_COUNT = 3;
+
+/** ホームに出すカード。新しい順に数件だけ見せて、続きは一覧シートへ送る。 */
+export const NoticeBoardCard = ({ notices, onOpenList }: { notices: FestivalNotice[]; onOpenList: () => void }) => {
+  const sorted = useMemo(() => sortNotices(notices), [notices]);
+  const lostCount = countNoticeKinds(sorted).lost;
+  const preview = sorted.slice(0, PREVIEW_COUNT);
+  const rest = sorted.length - preview.length;
+  if (sorted.length === 0) return null;
+
+  return (
+    <div className="mb-4 rounded-2xl bg-white border-2 overflow-hidden" style={{ borderColor: "#fde68a" }}>
+      <div className="px-4 pt-3.5 pb-1 flex items-center gap-1.5">
+        <span className="text-base" aria-hidden="true">🧳</span>
+        <span className="font-black text-sm" style={{ color: "var(--ink)" }}>落とし物・お知らせ</span>
+        <span className="ml-auto text-[11px] font-black px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: "#fffbeb", color: "#b45309", border: "1px solid #fde68a" }}>
+          {lostCount > 0 ? `落とし物 ${lostCount}件` : `${sorted.length}件`}
+        </span>
+      </div>
+      <div className="px-4 divide-y divide-stone-100">
+        {preview.map((n) => <NoticeRow key={n.id} notice={n} clamp />)}
+      </div>
+      {/* 一覧はいつでも開けるようにする。掲示が少ないうちは件数だけ変えて同じ場所に出す。 */}
+      <button onClick={onOpenList}
+        className="w-full mt-1 px-4 py-2.5 flex items-center justify-center gap-1 text-xs font-black border-t active:scale-[0.99] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+        style={{ color: "#b45309", backgroundColor: "#fffbeb", borderColor: "#fef3c7" }}>
+        {rest > 0 ? `ほか${rest}件 · 落とし物の一覧を見る` : "落とし物の一覧を見る"}
+        <ChevronRight size={14} strokeWidth={3} />
+      </button>
+      <div className="px-4 py-2.5 border-t border-stone-100"><NoticeFooter dense /></div>
+    </div>
+  );
+};
+
+type NoticeFilter = "all" | FestivalNotice["kind"];
+
+/** 掲示の全件一覧。種類でしぼれる(落とし物だけ見たい人が大半のため)。 */
+export const NoticeListSheet = ({ notices, onClose }: { notices: FestivalNotice[]; onClose: () => void }) => {
+  const [filter, setFilter] = useState<NoticeFilter>("all");
+  const sorted = useMemo(() => sortNotices(notices), [notices]);
+  const counts = useMemo(() => countNoticeKinds(sorted), [sorted]);
+  const shown = filter === "all" ? sorted : sorted.filter((n) => n.kind === filter);
+
+  // 0件の種類は押しても空になるだけなので出さない
+  const tabs: { id: NoticeFilter; label: string }[] = [
+    { id: "all", label: `すべて ${counts.all}` },
+    ...(counts.lost > 0 ? [{ id: "lost" as const, label: `🧳 落とし物 ${counts.lost}` }] : []),
+    ...(counts.child > 0 ? [{ id: "child" as const, label: `👶 迷子 ${counts.child}` }] : []),
+    ...(counts.info > 0 ? [{ id: "info" as const, label: `📢 お知らせ ${counts.info}` }] : []),
+  ];
+
+  return (
+    <Sheet onClose={onClose} title="落とし物・お知らせ">
+      <div className="p-4">
+        {tabs.length > 1 && (
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-none touch-pan-x -mx-1 px-1 pb-3">
+            {tabs.map((t) => (
+              <button key={t.id} onClick={() => setFilter(t.id)}
+                aria-pressed={filter === t.id}
+                className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-extrabold border-2 transition-all active:scale-95 ${filter === t.id ? "text-white" : "bg-white text-stone-600 border-stone-200"}`}
+                style={filter === t.id ? { backgroundColor: "#b45309", borderColor: "#b45309" } : {}}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {shown.length === 0 ? (
+          <div className="py-10 text-center">
+            <div className="text-3xl mb-2" aria-hidden="true">🧳</div>
+            <div className="text-sm font-bold text-stone-500">いまは掲示がありません</div>
+            <div className="text-xs text-stone-400 mt-1">落とし物が届くと、ここに掲示されます</div>
+          </div>
+        ) : (
+          <div className="divide-y divide-stone-100" role="list">
+            {shown.map((n) => <div key={n.id} role="listitem"><NoticeRow notice={n} /></div>)}
+          </div>
+        )}
+
+        <div className="mt-4 p-3.5 rounded-2xl" style={{ backgroundColor: "#fffbeb", border: "1px solid #fde68a" }}>
+          <NoticeFooter tinted />
+          <div className="text-[11px] mt-2 leading-relaxed" style={{ color: "#a16207" }}>
+            掲示は実行委員が手作業で更新しています。届いたばかりの物はまだ載っていないことがあります。
+          </div>
+        </div>
       </div>
     </Sheet>
   );

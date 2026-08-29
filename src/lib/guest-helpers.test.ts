@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCourses, fallbackDescription, festivalFinished, isCultureClub } from "./guest-helpers";
+import { buildCourses, countNoticeKinds, fallbackDescription, festivalFinished, isCultureClub, sortNotices } from "./guest-helpers";
 import { makeBooth, seedBooths } from "./festival";
 
 describe("fallbackDescription", () => {
@@ -93,5 +93,40 @@ describe("festivalFinished", () => {
   it("is finished on any non-festival day", () => {
     expect(festivalFinished(at("2026-08-28T12:00:00+09:00"))).toBe(true);
     expect(festivalFinished(at("2026-08-31T10:00:00+09:00"))).toBe(true);
+  });
+});
+
+describe("sortNotices", () => {
+  const n = (id: string, kind: "lost" | "child" | "info", ts: number) => ({ id, kind, text: id, ts });
+
+  it("puts the newest posting first", () => {
+    const list = [n("old", "lost", 1_000), n("new", "lost", 3_000), n("mid", "child", 2_000)];
+    expect(sortNotices(list).map((x) => x.id)).toEqual(["new", "mid", "old"]);
+  });
+
+  it("does not mutate the array it was given", () => {
+    const list = [n("a", "lost", 1_000), n("b", "lost", 2_000)];
+    sortNotices(list);
+    expect(list.map((x) => x.id)).toEqual(["a", "b"]);
+  });
+
+  it("keeps postings whose timestamp is missing, at the end", () => {
+    // 掲示が消えるのがいちばん困るので、tsが壊れていても落とさない
+    const broken = { id: "broken", kind: "lost" as const, text: "傘", ts: undefined as unknown as number };
+    const sorted = sortNotices([broken, n("ok", "lost", 5_000)]);
+    expect(sorted.map((x) => x.id)).toEqual(["ok", "broken"]);
+  });
+});
+
+describe("countNoticeKinds", () => {
+  const n = (kind: "lost" | "child" | "info") => ({ id: `${kind}${Math.random()}`, kind, text: "x", ts: 1 });
+
+  it("counts each kind and the total", () => {
+    expect(countNoticeKinds([n("lost"), n("lost"), n("child"), n("info")]))
+      .toEqual({ all: 4, lost: 2, child: 1, info: 1 });
+  });
+
+  it("returns zeros for an empty board", () => {
+    expect(countNoticeKinds([])).toEqual({ all: 0, lost: 0, child: 0, info: 0 });
   });
 });
