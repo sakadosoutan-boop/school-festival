@@ -1,4 +1,4 @@
-import type { Booth } from "../types";
+import type { Booth, FestivalNotice } from "../types";
 import { allSoldOut, BUILDINGS, CATEGORIES, formatLocation, formatOrganizer, todayFestivalDay } from "./festival";
 
 /* ═══════════ 来場者画面むけの純粋ヘルパー ═══════════
@@ -186,6 +186,27 @@ export function buildCourses(booths: Booth[], perCourse = 5): Course[] {
 
   return courses.slice(0, 5);
 }
+
+/* ── 落とし物・お知らせの掲示 ── */
+
+/** 新しい順。tsが欠けている掲示も落とさず、いちばん古い扱いで末尾に置く。 */
+export const sortNotices = (notices: FestivalNotice[]): FestivalNotice[] =>
+  [...notices].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+
+export interface NoticeCounts {
+  all: number;
+  lost: number;
+  child: number;
+  info: number;
+}
+
+/** 種類ごとの件数。0件の種類はしぼりこみに出さないので、その判定にも使う。 */
+export const countNoticeKinds = (notices: FestivalNotice[]): NoticeCounts => ({
+  all: notices.length,
+  lost: notices.filter((n) => n.kind === "lost").length,
+  child: notices.filter((n) => n.kind === "child").length,
+  info: notices.filter((n) => n.kind === "info").length,
+});
 
 /* ═══════════ 検索の言い換え ═══════════
    来場者は団体名を知らないまま「食べ物」「ゲーム」など一般語で探すため、

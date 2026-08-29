@@ -16,7 +16,7 @@ import type { Density } from "./lib/guest-helpers";
 import type { Booth, FestivalNotice, FestivalSettings, SnapshotMeta, StaffRole, StageProgram } from "./types";
 import { EmptyState, Sheet, SkipLink, Spinner, StatCard, TabButton, Toast, Confirm, useDragScroll, useTextScale, useTheme } from "./components/ui";
 import type { ToastType } from "./components/ui";
-import { BoothCard, BoothDetailSheet, HelpSheet, Onboarding } from "./components/guest";
+import { BoothCard, BoothDetailSheet, HelpSheet, NoticeBoardCard, NoticeListSheet, Onboarding } from "./components/guest";
 import { CourseSuggestions } from "./components/courses";
 import { StampRallyCard, useStampRally } from "./components/rally";
 import { Confetti, rallyRank } from "./components/celebrate";
@@ -163,6 +163,8 @@ function AppInner(): React.JSX.Element {
   const [funSheet, setFunSheet] = useState<"rally" | "courses" | null>(null);
   // 落とし物・お知らせの掲示(スタッフ画面の上部から開く)
   const [noticesOpen, setNoticesOpen] = useState(false);
+  // 来場者むけの掲示一覧(ホームのカードから開く。読むだけ)
+  const [noticeListOpen, setNoticeListOpen] = useState(false);
   // ブースの詳細から開いたステージ会場(ステージタブでその会場を選んだ状態にする)
   const [stageFocusVenue, setStageFocusVenue] = useState<string | null>(null);
   const [installHelpOpen, setInstallHelpOpen] = useState(false);
@@ -806,6 +808,7 @@ function AppInner(): React.JSX.Element {
           showToast={showToast}
         />
       )}
+      {noticeListOpen && <NoticeListSheet notices={settings.notices ?? []} onClose={() => setNoticeListOpen(false)} />}
       {funSheet === "rally" && (
         <Sheet onClose={() => setFunSheet(null)} title="スタンプラリー">
           <div className="px-5 pb-8 pt-1">
@@ -1001,27 +1004,7 @@ function AppInner(): React.JSX.Element {
               </div>
             )}
 
-            {(settings.notices ?? []).length > 0 && (
-              <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-amber-200">
-                <div className="flex items-center gap-1.5 mb-2.5">
-                  <span className="text-base">📌</span>
-                  <span className="font-black text-sm" style={{ color: "var(--ink)" }}>お知らせ掲示板</span>
-                  <span className="text-xs text-stone-400">({(settings.notices ?? []).length}件)</span>
-                </div>
-                <div className="space-y-2">
-                  {(settings.notices ?? []).map((n) => (
-                    <div key={n.id} className="flex items-start gap-2">
-                      <span className="text-base flex-shrink-0">{n.kind === "lost" ? "🧳" : n.kind === "child" ? "👶" : "📢"}</span>
-                      <div className="flex-1 text-sm text-stone-700 leading-snug">
-                        {n.text}
-                        <span className="text-[10px] text-stone-400 ml-1.5">{formatTime(n.ts)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-[10px] text-stone-400 mt-2.5">お心当たりのある方は運営本部へお声がけください</div>
-              </div>
-            )}
+            <NoticeBoardCard notices={settings.notices ?? []} onOpenList={() => setNoticeListOpen(true)} />
 
             {showInstall && !appInstalled && <InstallAppCard promptAvailable={promptAvailable} onInstall={() => void handleInstall()} />}
 

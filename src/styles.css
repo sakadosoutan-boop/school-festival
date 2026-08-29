@@ -95,6 +95,10 @@ html.text-lg-mode .text-\[11px\] {
   --ink-soft: #57534e;
   --ink-faint: #a8a29e;
   --line: #e7e5e4;
+  /* 落とし物・迷子・お知らせの種別ラベル(夜間モードは下で明るい側へ差し替える) */
+  --notice-lost: #b45309;
+  --notice-child: #0e7490;
+  --notice-info: #6d28d9;
   --surface-invert: #1c1917;
   --surface-invert-hover: #44403c;
   --page-a: #fff7ed;
@@ -147,6 +151,15 @@ html.dark .border-stone-100,
 html.dark .border-stone-200,
 html.dark .border-stone-300 { border-color: var(--line) !important; }
 html.dark .border-stone-900 { border-color: var(--surface-invert) !important; }
+/* divide-* は border-* とは別のクラス名で出力されるため、上の指定では効かない */
+html.dark .divide-stone-100 > :not([hidden]) ~ :not([hidden]) { border-color: var(--line) !important; }
+
+/* 落とし物・お知らせの種別ラベル。夜間モードでは暗い地に乗るので明るい側へ振る */
+html.dark {
+  --notice-lost: #fbbf24;
+  --notice-child: #67e8f9;
+  --notice-info: #c4b5fd;
+}
 html.dark .border-t-stone-900 { border-top-color: var(--ink) !important; }
 html.dark .hover\:border-stone-300:hover,
 html.dark .hover\:border-stone-900:hover { border-color: var(--ink-faint) !important; }
